@@ -124,11 +124,14 @@ private:
                 request.headers = data.substr(0, header_end);
                 request.body = data.substr(header_end + 4, length);
             }
+            {
+                // Kept before the reply: once the SDK hears back, the request is here.
+                std::lock_guard<std::mutex> lock(mutex_);
+                requests_.push_back(request);
+            }
             std::string reply = "HTTP/1.1 " + std::to_string(status_) + " OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             send(client, reply.data(), (int)reply.size(), 0);
             CLOSE_SOCKET(client);
-            std::lock_guard<std::mutex> lock(mutex_);
-            requests_.push_back(request);
         }
     }
 
