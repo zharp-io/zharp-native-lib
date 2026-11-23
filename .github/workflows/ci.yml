@@ -81,3 +81,64 @@ jobs:
       - run: cmake -S . -B build -G Ninja -DZHARP_CRASHPAD=OFF -DBUILD_SHARED_LIBS=ON
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
+
+  qt:
+    name: Qt ${{ matrix.qt }} · ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux, os: ubuntu-24.04, qt: '6.8.3', arch: linux_gcc_64 }
+          - { name: macOS, os: macos-latest, qt: '6.8.3', arch: clang_64 }
+          - { name: Windows (MSVC), os: windows-latest, qt: '6.8.3', arch: win64_msvc2022_64 }
+          - { name: Linux (Ubuntu's Qt), os: ubuntu-22.04, qt: '5.15', distro: true }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libcurl4-openssl-dev zlib1g-dev \
+            libgl1-mesa-dev libegl1 libxkbcommon0 libfontconfig1 \
+            ${{ matrix.distro && 'qtbase5-dev qtdeclarative5-dev qml-module-qtquick2 qml-module-qtquick-controls2 qml-module-qtquick-templates2 qml-module-qtquick-window2' || '' }}
+
+      - name: Qt ${{ matrix.qt }}
+        if: ${{ !matrix.distro }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt }}
+          arch: ${{ matrix.arch }}
+          cache: true
+
+      - name: Configure (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DZHARP_QT=ON ${{ matrix.distro && '-DZHARP_QT_MAJOR=5' || '' }}
+
+      - name: Configure (Windows, MSVC)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DZHARP_QT=ON
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      - name: Tests (the Qt layer on the offscreen platform)
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure
+
+      - name: Crash, walk and check (the widgets and QML shops)
+        shell: bash
+        run: bash e2e/qt/ci.sh build "$RUNNER_TEMP/e2e-qt"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-qt-${{ matrix.os }}-${{ matrix.qt }}
+          path: ${{ runner.temp }}/e2e-qt
+          if-no-files-found: ignore

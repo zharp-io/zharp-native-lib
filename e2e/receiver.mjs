@@ -2,6 +2,7 @@
 //   POST /api/v1/minidump?key=…                     Crashpad's upload (multipart, gzipped)
 //   POST /api/v1/otlp/v1/logs | /v1/traces           the SDK's OTLP/HTTP JSON
 //   POST /api/v1/applications/:id/artifacts          `zharp debug-files upload` (.sym, source bundles)
+//   GET  /shop/…                                     the Qt examples' prices service (headers kept)
 //
 //   node receiver.mjs <out dir> <port>
 import { createServer } from 'node:http';
@@ -11,7 +12,8 @@ import { gunzipSync } from 'node:zlib';
 
 const out = process.argv[2] || '/out';
 const port = Number(process.argv[3] || 8099);
-for (const dir of ['minidumps', 'otlp', 'artifacts']) mkdirSync(join(out, dir), { recursive: true });
+for (const dir of ['minidumps', 'otlp', 'artifacts', 'http']) mkdirSync(join(out, dir), { recursive: true });
+let calls = 0;
 
 /** Fields and files of a multipart/form-data body. */
 export function parseMultipart(body, type) {
@@ -75,6 +77,13 @@ createServer((req, res) => {
         writeFileSync(join(out, 'otlp', `${String(n).padStart(3, '0')}-${signal}.auth`), String(req.headers.authorization || ''));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end('{}');
+        return;
+      }
+      if (req.method === 'GET' && url.pathname.startsWith('/shop/')) {
+        const n = ++calls;
+        writeFileSync(join(out, 'http', `${n}.json`), JSON.stringify({ path: req.url, headers: req.headers }, null, 2));
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': 'shop_session=s3cret', 'X-Shop-Region': 'eu' });
+        res.end('{"prices":[1000,1000,500]}');
         return;
       }
       const artifact = /^\/api\/v1\/applications\/([^/]+)\/artifacts$/.exec(url.pathname);
