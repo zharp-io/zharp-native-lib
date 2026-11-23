@@ -13,6 +13,7 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QWindow>
 
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 
@@ -122,11 +123,8 @@ int main(int argc, char **argv) {
     // ── Network ────────────────────────────────────────────────────────────
     Receiver api;
     Receiver missing(0, 404);
-    int closed;
-    {
-        Receiver probe;
-        closed = probe.port();
-    }
+    ClosedPort closed_port;
+    const int closed = closed_port.port();
     ZharpQt::NetworkAccessManager manager;
     {
         zharp::Span checkout_span("checkout");
@@ -148,6 +146,10 @@ int main(int argc, char **argv) {
         notFound->deleteLater();
         QNetworkReply *refused = get(manager, QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/down").arg(closed))));
         CHECK(refused->error() != QNetworkReply::NoError);
+        if (refused->error() == QNetworkReply::NoError) {
+            fprintf(stderr, "  refused request: finished=%d error=%d
+", (int)refused->isFinished(), (int)refused->error());
+        }
         delete refused;
     }
     QCoreApplication::processEvents();

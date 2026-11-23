@@ -27,6 +27,33 @@ typedef int socket_t;
 #  define CLOSE_SOCKET close
 #endif
 
+/** A port on 127.0.0.1 that refuses connections: bound (so nothing else gets it) but not listening. */
+class ClosedPort {
+public:
+    ClosedPort() {
+#if defined(_WIN32)
+        WSADATA data;
+        WSAStartup(MAKEWORD(2, 2), &data);
+#endif
+        socket_ = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in address = {};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        bind(socket_, (sockaddr *)&address, sizeof address);
+        socklen_t size = sizeof address;
+        getsockname(socket_, (sockaddr *)&address, &size);
+        port_ = ntohs(address.sin_port);
+    }
+    ~ClosedPort() { CLOSE_SOCKET(socket_); }
+    ClosedPort(const ClosedPort &) = delete;
+    ClosedPort &operator=(const ClosedPort &) = delete;
+    int port() const { return port_; }
+
+private:
+    socket_t socket_;
+    int port_ = 0;
+};
+
 struct Request {
     std::string path;
     std::string headers;
