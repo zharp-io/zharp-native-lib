@@ -66,6 +66,10 @@ jobs:
           cmake --build consumer-build --config RelWithDebInfo
           ctest --test-dir consumer-build -C RelWithDebInfo --output-on-failure
 
+      - name: Kernel log (which process crashed, and where)
+        if: failure() && runner.os == 'Linux'
+        run: sudo dmesg | tail -n 60
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
