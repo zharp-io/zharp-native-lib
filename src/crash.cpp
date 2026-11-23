@@ -23,6 +23,14 @@
 #  include <windows.h>
 #endif
 
+#if defined(__linux__) || defined(__ANDROID__)
+// On Linux the handler finds this process's CrashpadInfo (and so every annotation set while it
+// runs) through the .note.crashpad.info ELF note. Crashpad links the note in through a reference
+// GCC optimises away at -O2; this keeps it, so the note is in every binary Zharp is linked into.
+extern "C" int *CRASHPAD_NOTE_REFERENCE;
+__attribute__((used)) static int **const zharp_keep_crashpad_note = &CRASHPAD_NOTE_REFERENCE;
+#endif
+
 namespace zharp {
 
 namespace {
@@ -35,7 +43,6 @@ crashpad::StringAnnotation<256> g_user_name("zharp.user.name");
 crashpad::StringAnnotation<16000> g_breadcrumbs("zharp.breadcrumbs");
 crashpad::StringAnnotation<256> g_exception_type("zharp.exception.type");
 crashpad::StringAnnotation<4096> g_exception_message("zharp.exception.message");
-crashpad::StringAnnotation<128> g_trace_id("zharp.trace_id");
 
 crashpad::SimpleStringDictionary *g_tags = nullptr;
 crashpad::CrashpadClient *g_client = nullptr;
@@ -114,7 +121,6 @@ void crash_set(const char *which, const std::string &value) {
     else if (name == "user.email") set(g_user_email, value);
     else if (name == "user.name") set(g_user_name, value);
     else if (name == "breadcrumbs") set(g_breadcrumbs, value);
-    else if (name == "trace_id") set(g_trace_id, value);
 }
 
 void crash_set_tag(const std::string &key, const std::string &value) {
