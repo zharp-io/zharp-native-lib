@@ -1,0 +1,92 @@
+# Prebuilt binaries for a release tag (v*): the SDK as shared libraries, with the Qt layer built
+# against Qt 6.5 LTS (binary compatible with every later Qt 6; Linux arm64: Qt 6.8), installed into one folder per
+# platform and attached to the GitHub release. qmake users unpack one and
+# include(<folder>/share/zharp/zharp_qt.pri); CMake users point CMAKE_PREFIX_PATH at it.
+# Qt 5.15 apps build the SDK from source (-DZHARP_QT_MAJOR=5).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x64, os: ubuntu-22.04, qt: '6.5.3', qt_arch: linux_gcc_64 }
+          - { name: linux-arm64, os: ubuntu-22.04-arm, qt: '6.8.3', qt_arch: linux_gcc_arm64 }   # aqt has arm64 Linux Qt from 6.7
+          - { name: macos-universal, os: macos-latest, qt: '6.5.3', qt_arch: clang_64, universal: true }
+          - { name: windows-x64, os: windows-latest, qt: '6.5.3', qt_arch: win64_msvc2019_64, msvc: true }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libcurl4-openssl-dev zlib1g-dev libgl1-mesa-dev libegl1 libxkbcommon0 libfontconfig1
+
+      - name: Qt ${{ matrix.qt }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt }}
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+
+      - name: Configure (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_SHARED_LIBS=ON -DZHARP_QT=ON -DZHARP_QT_MAJOR=6
+          -DZHARP_BUILD_EXAMPLES=OFF -DZHARP_INSTALL=ON -DCMAKE_INSTALL_PREFIX="$PWD/dist/zharp-${{ github.ref_name }}-${{ matrix.name }}"
+          ${{ matrix.universal && '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"' || '' }}
+
+      - name: Configure (Windows, MSVC)
+        if: runner.os == 'Windows'
+        run: >
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_SHARED_LIBS=ON -DZHARP_QT=ON -DZHARP_QT_MAJOR=6
+          -DZHARP_BUILD_EXAMPLES=OFF -DZHARP_INSTALL=ON -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/dist/zharp-${{ github.ref_name }}-${{ matrix.name }}"
+
+      - name: Build and test
+        run: |
+          cmake --build build --config RelWithDebInfo --parallel
+          ctest --test-dir build -C RelWithDebInfo --output-on-failure
+
+      - name: Install and pack
+        shell: bash
+        run: |
+          cmake --install build --config RelWithDebInfo
+          cd dist
+          folder="zharp-${{ github.ref_name }}-${{ matrix.name }}"
+          if [ "${{ runner.os }}" = Windows ]; then 7z a "$folder.zip" "$folder" > /dev/null; else tar -czf "$folder.tar.gz" "$folder"; fi
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zharp-${{ matrix.name }}
+          path: dist/zharp-*.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum zharp-* > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist/*
