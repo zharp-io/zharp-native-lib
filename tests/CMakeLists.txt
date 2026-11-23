@@ -16,3 +16,7 @@ if(WIN32)
 endif()
 add_test(NAME integration COMMAND zharp_integration_tests)
 set_tests_properties(integration PROPERTIES TIMEOUT 120)
+
+if(ZHARP_QT)
+    add_subdirectory(qt)
+endif()

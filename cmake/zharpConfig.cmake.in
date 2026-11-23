@@ -1,7 +1,8 @@
 @PACKAGE_INIT@
 
 # find_package(zharp): the zharp::zharp target, crashpad_handler (zharp::crashpad_handler), and the
-# CMake helpers zharp_add_crash_handler(<target>) and zharp_upload_debug_files(<target> APP <id>).
+# CMake helpers zharp_add_crash_handler(<target>) and zharp_upload_debug_files(<target> APP <id>);
+# zharp::qt when the SDK was built with ZHARP_QT.
 
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
@@ -26,6 +27,17 @@ if(ZHARP_CRASHPAD AND NOT TARGET crashpad::client)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/zharpTargets.cmake")
+
+# zharp::qt, when the SDK was built with ZHARP_QT and that Qt is found here too.
+set(ZHARP_QT_MAJOR "@ZHARP_QT_MAJOR@")
+if(ZHARP_QT_MAJOR AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/zharpQtTargets.cmake")
+    if(NOT TARGET Qt${ZHARP_QT_MAJOR}::Network)
+        find_package(Qt${ZHARP_QT_MAJOR} QUIET COMPONENTS Core Gui Network)
+    endif()
+    if(TARGET Qt${ZHARP_QT_MAJOR}::Network)
+        include("${CMAKE_CURRENT_LIST_DIR}/zharpQtTargets.cmake")
+    endif()
+endif()
 set(ZHARP_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 include("${CMAKE_CURRENT_LIST_DIR}/zharpFunctions.cmake")
 

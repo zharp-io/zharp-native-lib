@@ -95,6 +95,54 @@ endif()
 set(ZHARP_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake" CACHE INTERNAL "")
 include(cmake/zharpFunctions.cmake)
 
+# ── Qt: zharp::qt ─────────────────────────────────────────────────────────────
+# On by default when the project that adds Zharp has found Qt already.
+if(TARGET Qt6::Core OR TARGET Qt5::Core)
+    set(_zharp_qt_default ON)
+else()
+    set(_zharp_qt_default OFF)
+endif()
+option(ZHARP_QT "Build the Qt layer, zharp::qt (Qt 6, or Qt 5.15: Core, Gui, Network)" ${_zharp_qt_default})
+set(ZHARP_QT_MAJOR "" CACHE STRING "Qt for zharp::qt: 6 or 5 (empty: the project's, else Qt 6, else Qt 5)")
+if(ZHARP_QT)
+    if(NOT ZHARP_QT_MAJOR)
+        if(TARGET Qt6::Core)
+            set(ZHARP_QT_MAJOR 6)
+        elseif(TARGET Qt5::Core)
+            set(ZHARP_QT_MAJOR 5)
+        else()
+            find_package(Qt6 QUIET COMPONENTS Core)
+            if(Qt6_FOUND)
+                set(ZHARP_QT_MAJOR 6)
+            else()
+                set(ZHARP_QT_MAJOR 5)
+            endif()
+        endif()
+    endif()
+    if(ZHARP_QT_MAJOR EQUAL 5)
+        find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Network)
+    else()
+        find_package(Qt6 REQUIRED COMPONENTS Core Gui Network)
+    endif()
+    add_library(zharp_qt src/qt/zharp_qt.cpp include/zharp_qt.h)
+    add_library(zharp::qt ALIAS zharp_qt)
+    set_target_properties(zharp_qt PROPERTIES
+        EXPORT_NAME qt
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON)
+    target_compile_features(zharp_qt PUBLIC cxx_std_17)
+    target_compile_definitions(zharp_qt PRIVATE ZHARP_QT_BUILDING)
+    target_link_libraries(zharp_qt PUBLIC zharp
+        Qt${ZHARP_QT_MAJOR}::Core Qt${ZHARP_QT_MAJOR}::Gui Qt${ZHARP_QT_MAJOR}::Network)
+    if(MSVC)
+        target_compile_options(zharp_qt PRIVATE /W4 /utf-8)
+    else()
+        target_compile_options(zharp_qt PRIVATE -Wall -Wextra)
+    endif()
+endif()
+
 # ── Tests and examples ────────────────────────────────────────────────────────
 if(ZHARP_BUILD_TESTS)
     enable_testing()
@@ -125,4 +173,19 @@ if(ZHARP_INSTALL)
         cmake/zharp-upload-debug-files.cmake
         DESTINATION ${ZHARP_INSTALL_CMAKEDIR})
     install(FILES LICENSE NOTICE DESTINATION ${CMAKE_INSTALL_DATADIR}/zharp)
+    if(ZHARP_QT)
+        install(TARGETS zharp_qt EXPORT zharpQtTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        install(FILES include/zharp_qt.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        install(EXPORT zharpQtTargets NAMESPACE zharp:: DESTINATION ${ZHARP_INSTALL_CMAKEDIR})
+        # qmake: include(<prefix>/share/zharp/zharp_qt.pri)
+        if(BUILD_SHARED_LIBS)
+            set(ZHARP_PRI_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+            set(ZHARP_PRI_BINDIR "${CMAKE_INSTALL_BINDIR}")
+            configure_file(cmake/zharp_qt.pri.in "${CMAKE_CURRENT_BINARY_DIR}/zharp_qt.pri" @ONLY)
+            install(FILES "${CMAKE_CURRENT_BINARY_DIR}/zharp_qt.pri" DESTINATION ${CMAKE_INSTALL_DATADIR}/zharp)
+        endif()
+    endif()
 endif()

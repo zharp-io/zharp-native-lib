@@ -1,0 +1,36 @@
+# Zharp for Qt in a qmake project. Build and install the SDK once, as shared libraries with Qt:
+#
+#   cmake -S zharp-native-lib -B build -DZHARP_QT=ON -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+#   cmake --build build && cmake --install build --prefix <prefix>
+#
+# then, in your .pro file:
+#
+#   include(<prefix>/share/zharp/zharp_qt.pri)
+#
+# It adds the include path, links zharp_qt and zharp, and copies crashpad_handler (and on Windows
+# the SDK's DLLs) next to your executable after each link.
+
+ZHARP_PREFIX = $$clean_path($$PWD/../..)
+QT *= core gui network
+CONFIG *= c++17
+INCLUDEPATH += $$ZHARP_PREFIX/include
+DEFINES += ZHARP_SHARED
+LIBS += -L$$ZHARP_PREFIX/@ZHARP_PRI_LIBDIR@ -lzharp_qt -lzharp
+unix: QMAKE_RPATHDIR += $$ZHARP_PREFIX/@ZHARP_PRI_LIBDIR@
+
+# Where the executable lands (qmake's debug/ and release/ folders on Windows).
+ZHARP_TARGET_DIR = $$OUT_PWD
+!isEmpty(DESTDIR): ZHARP_TARGET_DIR = $$absolute_path($$DESTDIR, $$OUT_PWD)
+else: win32:CONFIG(debug, debug|release): ZHARP_TARGET_DIR = $$OUT_PWD/debug
+else: win32: ZHARP_TARGET_DIR = $$OUT_PWD/release
+macx:app_bundle: ZHARP_TARGET_DIR = $$ZHARP_TARGET_DIR/$${TARGET}.app/Contents/MacOS
+
+win32 {
+    ZHARP_COPY = crashpad_handler.exe zharp.dll zharp_qt.dll
+} else {
+    ZHARP_COPY = crashpad_handler
+}
+for(file, ZHARP_COPY) {
+    !isEmpty(QMAKE_POST_LINK): QMAKE_POST_LINK += $$escape_expand(\\n\\t)
+    QMAKE_POST_LINK += $$QMAKE_COPY $$shell_quote($$shell_path($$ZHARP_PREFIX/@ZHARP_PRI_BINDIR@/$$file)) $$shell_quote($$shell_path($$ZHARP_TARGET_DIR))
+}
