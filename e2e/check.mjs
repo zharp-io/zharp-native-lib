@@ -37,10 +37,14 @@ check(syms.size > 0, '.sym files uploaded');
 // Names as each compiler's debug info writes them ("run(char const*)" from DWARF, "run(const char *)"
 // from a PDB); crash reasons as each OS has them.
 const ABORT = /^(SIGABRT|EXC_CRASH|EXC_SOFTWARE|STATUS_FATAL_APP_EXIT|0x40000015)/;
+// With MSVC an uncaught exception is SEH exception 0xE06D7363 and Crashpad catches that, not the abort.
+const UNCAUGHT = /^(SIGABRT|EXC_CRASH|EXC_SOFTWARE|STATUS_FATAL_APP_EXIT|0x40000015|Unhandled C\+\+ Exception)/;
+// "main" from DWARF, "main(int, char**)" from a PDB.
+const MAIN = /^main(\(|$)/;
 const expected = {
-  segv: { reason: /^(SIGSEGV|SIGBUS|EXC_BAD_ACCESS|EXCEPTION_ACCESS_VIOLATION)/, frames: [/^Cart::total\(/, /^Shop::checkout\(/, /^run\(/, /^main$/], file: 'cart.cpp' },
-  abort: { reason: ABORT, frames: [/^validate\(/, /^run\(/, /^main$/], file: 'main.cpp' },
-  throw: { reason: ABORT, frames: [/^load_inventory\(/, /^run\(/, /^main$/], file: 'main.cpp', exception: ['std::runtime_error', 'inventory file is corrupt'] },
+  segv: { reason: /^(SIGSEGV|SIGBUS|EXC_BAD_ACCESS|EXCEPTION_ACCESS_VIOLATION)/, frames: [/^Cart::total\(/, /^Shop::checkout\(/, /^run\(/, MAIN], file: 'cart.cpp' },
+  abort: { reason: ABORT, abort: true, frames: [/^validate\(/, /^run\(/, MAIN], file: 'main.cpp' },
+  throw: { reason: UNCAUGHT, abort: true, frames: [/^load_inventory\(/, /^run\(/, MAIN], file: 'main.cpp', exception: ['std::runtime_error', 'inventory file is corrupt'] },
 };
 
 const dumps = readdirSync(join(out, 'minidumps')).filter((n) => n.endsWith('.dmp')).sort((a, b) => parseInt(a) - parseInt(b));
@@ -63,7 +67,12 @@ dumps.forEach((name, i) => {
   }
   console.log(lines.map((l) => `    ${l}`).join('\n'));
   check(key === 'zpk_e2e', 'the key came in the URL');
-  check(want.reason.test(walk.crash_info.type), `crash reason ${walk.crash_info.type}`);
+  // macOS: an abort is a signal with no Mach exception behind it, so the EXC_CRASH Crashpad catches
+  // unwraps to exception 0 (ExcCrashRecoverOriginalException drops the signal number). Such a dump
+  // is an abort when its crashing thread is in abort().
+  const macAbort = want.abort && /^Mac/.test(walk.system_info.os) && /^unknown 0x00000000 /.test(walk.crash_info.type) &&
+    thread.frames.slice(0, 4).some((f) => f.module === 'libsystem_c.dylib');
+  check(want.reason.test(walk.crash_info.type) || macAbort, `crash reason ${walk.crash_info.type}${macAbort ? ' (an abort on macOS)' : ''}`);
   const named = thread.frames.flatMap((f) => [...(f.inlines ?? []).map((x) => x.function), f.function]).filter(Boolean);
   for (const fn of want.frames) check(named.some((name) => fn.test(name)), `frame ${fn.source}`);
   check(thread.frames.some((f) => (f.file ?? '').endsWith(want.file) && f.line > 0), `a frame in ${want.file} with its line`);
@@ -137,9 +146,10 @@ for (const name of readdirSync(join(out, 'otlp')).filter((n) => n.endsWith('-log
 const attr = (list, key) => list.find((a) => a.key === key)?.value?.stringValue;
 const errors = records.filter(({ r }) => attr(r.attributes, 'exception.type'));
 console.log(`\nhandled errors: ${errors.map(({ r }) => attr(r.attributes, 'exception.type')).join(', ')}`);
-// C++ keeps no stack of a throw: a caught exception's stack is where it was reported, in run()'s catch.
+// C++ keeps no stack of a throw: a caught exception's stack is where it was reported, in run()'s catch
+// (with MSVC, the catch block's own funclet: "`run'::`1'::catch$8").
 const wanted = {
-  PaymentDeclined: [/ run\(/, 'main.cpp:'],
+  PaymentDeclined: [/ (run\(|`run'::)/, 'main.cpp:'],
   InventoryError: [/ run\(/, 'main.cpp:'],
   Message: [/ run\(/, 'main.cpp:'],
 };

@@ -151,10 +151,12 @@ the `qt` feature; Conan: `-o zharp/*:qt=True`.
   `#0  shop +0x7ebd` frames (a name where the module exports one), and the modules' Breakpad debug
   IDs in `zharp.native_modules`. Zharp names the frames from the same `.sym` files as crashes.
 - **Uncaught C++ exceptions:** the SDK's `std::terminate` handler records the exception's type and
-  `what()` (chaining to the handler that was there), then Crashpad writes the dump. It, and
-  `zharp_set_crash_reason` (Qt's `qFatal`), also record the stack where the crash was named, with
-  the modules' debug IDs: Zharp reads that stack, because a dump can't be walked from `abort()`
-  back to your code through libraries it has no `.sym` for.
+  `what()` (chaining to the handler that was there), then Crashpad writes the dump. With MSVC an
+  uncaught exception never reaches `std::terminate`, so an unhandled-exception filter in front of
+  Crashpad's reads the same from the exception record. Both, and `zharp_set_crash_reason` (Qt's
+  `qFatal`), also record the stack where the crash was named, with the modules' debug IDs: Zharp
+  reads that stack, because a dump can't be walked from `abort()` back to your code through
+  libraries it has no `.sym` for.
 
 ## Readable stack traces
 
@@ -166,6 +168,10 @@ yourself:
 ```sh
 ZHARP_AUTH_TOKEN=… npx @zharp/cli debug-files upload build/ --app <id> --include-sources
 ```
+
+On macOS the DWARF stays in the object files until `dsymutil` gathers it into a `.dSYM`; upload
+the `.dSYM` together with the binary (the binary has the unwind tables, the `.dSYM` the files and
+lines).
 
 ## Crashpad
 

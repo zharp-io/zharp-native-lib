@@ -67,7 +67,9 @@ NOINLINE static Stack capture_here() {
 #endif
 }
 
-static void capturing() {
+// Not inlined into main: Apple's unwinder reports no frame above main (dyld's start has none),
+// so main alone would be the only frame past the caller.
+NOINLINE static void capturing() {
     Stack stack = capture_here();
     CHECK(stack.frames.size() >= 2);
     CHECK(!stack.modules.empty());

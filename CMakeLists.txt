@@ -77,6 +77,8 @@ if(BUILD_SHARED_LIBS)
 endif()
 target_link_libraries(zharp PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 if(WIN32)
+    # Crashpad's headers pull in windows.h; its min/max macros break mini_chromium's span.h.
+    target_compile_definitions(zharp PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(zharp PRIVATE winhttp psapi)
 else()
     find_package(CURL REQUIRED)

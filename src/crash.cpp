@@ -21,6 +21,7 @@
 #    define WIN32_LEAN_AND_MEAN
 #  endif
 #  include <windows.h>
+#  include <exception>
 #endif
 
 #if defined(__linux__) || defined(__ANDROID__)
@@ -78,6 +79,67 @@ void set(crashpad::StringAnnotation<N> &annotation, const std::string &value) {
     }
 }
 
+#if defined(_MSC_VER)
+// On Windows an uncaught C++ exception never reaches std::terminate's handler: it leaves as SEH
+// exception 0xE06D7363 and Crashpad's unhandled-exception filter writes the dump first. This filter
+// goes in front of Crashpad's and reads the type (and what(), for a std::exception) from the
+// exception record the way the MSVC runtime lays it out, then hands over to Crashpad.
+constexpr DWORD kMsvcCppException = 0xE06D7363;
+constexpr ULONG_PTR kMsvcMagic = 0x19930520;
+
+// <ehdata.h>: on 64-bit Windows the pointers inside are offsets from the throwing image's base.
+struct ThrowInfoRva { unsigned attributes; int unwind; int forward_compat; int catchable_types; };
+struct CatchableTypeRva { unsigned properties; int type; int mdisp; int pdisp; int vdisp; int size; int copy; };
+
+LPTOP_LEVEL_EXCEPTION_FILTER g_previous_filter = nullptr;
+
+const char *safe_what(const std::exception *e) {
+    __try {
+        return e->what();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+LONG WINAPI unhandled_cpp_exception(EXCEPTION_POINTERS *info) {
+    const EXCEPTION_RECORD *record = info ? info->ExceptionRecord : nullptr;
+    if (record && record->ExceptionCode == kMsvcCppException && record->NumberParameters >= 3 &&
+        record->ExceptionInformation[0] == kMsvcMagic && record->ExceptionInformation[2]) {
+        const char *object = reinterpret_cast<const char *>(record->ExceptionInformation[1]);
+#if defined(_WIN64)
+        const char *base = record->NumberParameters >= 4 ? reinterpret_cast<const char *>(record->ExceptionInformation[3]) : nullptr;
+#else
+        const char *base = nullptr;
+#endif
+        auto at = [base](int offset) { return base ? base + offset : reinterpret_cast<const char *>((uintptr_t)(unsigned)offset); };
+        const auto *throw_info = reinterpret_cast<const ThrowInfoRva *>(record->ExceptionInformation[2]);
+        if (throw_info->catchable_types) {
+            const int *types = reinterpret_cast<const int *>(at(throw_info->catchable_types));
+            std::string type;
+            std::string message;
+            // The first catchable type is the thrown one; the rest are its bases.
+            for (int i = 0; i < types[0]; i++) {
+                const auto *catchable = reinterpret_cast<const CatchableTypeRva *>(at(types[1 + i]));
+                const auto *type_info = reinterpret_cast<const std::type_info *>(at(catchable->type));
+                if (i == 0) type = exception_type_name(*type_info);
+                if (object && catchable->pdisp < 0 && *type_info == typeid(std::exception)) {
+                    const char *what = safe_what(reinterpret_cast<const std::exception *>(object + catchable->mdisp));
+                    if (what) message = what;
+                    break;
+                }
+            }
+            if (!type.empty()) {
+                // Still on the throwing thread's stack: the walk goes through the dispatcher and
+                // _CxxThrowException back to the throw.
+                Stack stack = capture_stack(nullptr);
+                crash_set_exception(type, message.empty() ? "uncaught exception" : message, format_stack(stack), format_modules(stack));
+            }
+        }
+    }
+    return g_previous_filter ? g_previous_filter(info) : EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 }  // namespace
 
 bool crash_start(const Config &config, const std::map<std::string, std::string> &annotations) {
@@ -108,6 +170,10 @@ bool crash_start(const Config &config, const std::map<std::string, std::string> 
         return false;
     }
     g_enabled = true;
+#if defined(_MSC_VER)
+    // After StartHandler, which set Crashpad's own filter: ours runs first and chains to it.
+    g_previous_filter = SetUnhandledExceptionFilter(unhandled_cpp_exception);
+#endif
     debug_log("crash reporting on: %s, reports in %s", config.handler_path.c_str(), database.c_str());
     return true;
 }

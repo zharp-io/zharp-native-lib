@@ -51,7 +51,11 @@ for exe in "$QT_SHOP" "$QT_QML"; do
   case "$exe" in
     *.exe) sym "${exe%.exe}.pdb" ;;
     *) if [ "$(uname -s)" = Darwin ]; then
-         for arch in $(lipo -archs "$exe"); do sym -a "$arch" "$exe"; done
+         # Files and lines from a .dSYM (dsymutil gathers the DWARF from the object files), unwind
+         # tables from the binary.
+         dsym="$OUT/$(basename "$exe").dSYM"
+         dsymutil "$exe" -o "$dsym"
+         for arch in $(lipo -archs "$exe"); do sym -a "$arch" "$dsym/Contents/Resources/DWARF/$(basename "$exe")" "$exe"; done
        else
          sym "$exe"
        fi ;;

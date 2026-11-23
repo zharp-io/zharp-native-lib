@@ -70,7 +70,11 @@ dumps.forEach((name, i) => {
     console.log(`   ${inApp}#${String(n).padEnd(3)}${c.function ? `${c.function}${where}` : `+${c.module_offset}`} [${c.module ?? '???'}]`);
   });
   check(key === 'zpk_e2e', 'the key came in the URL');
-  check(want.reason.test(walk.crash_info.type), `crash reason ${walk.crash_info.type}`);
+  // macOS: an abort is a signal with no Mach exception behind it, so Crashpad's EXC_CRASH unwraps to
+  // exception 0 (the signal number is dropped); it is an abort when the thread is in abort().
+  const macAbort = want.reason === ABORT && /^Mac/.test(walk.system_info.os) && /^unknown 0x00000000 /.test(walk.crash_info.type) &&
+    thread.frames.slice(0, 4).some((f) => f.module === 'libsystem_c.dylib');
+  check(want.reason.test(walk.crash_info.type) || macAbort, `crash reason ${walk.crash_info.type}${macAbort ? ' (an abort on macOS)' : ''}`);
   // A crash the SDK named (qFatal) carries the stack recorded where it was named: Zharp reads that,
   // because the walk can't unwind abort() through libraries it has no .sym for.
   const recorded = annotations['zharp.exception.stacktrace'] ? named(annotations['zharp.exception.stacktrace'], annotations['zharp.exception.modules']) : null;
