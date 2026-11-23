@@ -113,6 +113,12 @@ ZHARP_API void zharp_capture_error(const char *type, const char *message);
 /* Reports a message as an issue, with the stack of this call. ZHARP_LEVEL_WARN and above. */
 ZHARP_API void zharp_capture_message(zharp_level_t level, const char *message);
 
+/* Names the crash that is about to happen, for code that aborts on purpose (Qt's qFatal, your
+   own assert handler): the crash report then reads as "type: message" instead of SIGABRT.
+   Returns 1 when a crash report will carry it, 0 when crash reporting is off (report it with
+   zharp_capture_error instead). */
+ZHARP_API int zharp_set_crash_reason(const char *type, const char *message);
+
 /* ── Logs and breadcrumbs ───────────────────────────────────────────────── */
 
 /* A log line. Always kept as a breadcrumb (the last 100 go with a crash or an error); sent to
@@ -154,6 +160,11 @@ ZHARP_API zharp_span_t *zharp_start_span(const char *name);
    ("00-<trace id>-<span id>-01") a request came with. NULL or invalid starts a new trace. */
 ZHARP_API zharp_span_t *zharp_start_span_from(const char *name, const char *traceparent);
 
+/* Starts a span for work that finishes later, such as an asynchronous HTTP call: a child of this
+   thread's current span that does not become the current span, so what this thread does next
+   isn't filed under it. End it on any thread. */
+ZHARP_API zharp_span_t *zharp_start_async_span(const char *name);
+
 /* Marks the span as a server request (1), a client call (2) or internal work (0, the default). */
 ZHARP_API void zharp_span_set_kind(zharp_span_t *span, int kind);
 
@@ -175,6 +186,9 @@ ZHARP_API void zharp_end_span(zharp_span_t *span);
 /* Writes this thread's current span as a W3C traceparent header value into `out` (at least 56
    bytes), for an outgoing request. Returns 0 when there is no current span. */
 ZHARP_API int zharp_traceparent(char *out, size_t size);
+
+/* The same for a given span (one from zharp_start_async_span, say). Returns 0 for a no-op span. */
+ZHARP_API int zharp_span_traceparent(const zharp_span_t *span, char *out, size_t size);
 
 #ifdef __cplusplus
 }

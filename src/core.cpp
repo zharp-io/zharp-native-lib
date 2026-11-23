@@ -257,6 +257,8 @@ static std::string device_id(const Config &c) {
 struct zharp_span {
     bool noop = false;
     bool sampled = false;
+    /** From zharp_start_async_span: never this thread's current span; freed where it ends. */
+    bool detached = false;
     /** Ended on another thread than it started on: its own thread frees it. */
     std::atomic<bool> ended_elsewhere{false};
     bool ended = false;
@@ -303,10 +305,11 @@ static bool valid_hex(const std::string &text, size_t length) {
     return nonzero;
 }
 
-static zharp_span *start_span(const char *name, const char *traceparent) {
+static zharp_span *start_span(const char *name, const char *traceparent, bool detached = false) {
     State *s = g_state;
     if (!s) return &g_noop_span;
     auto *span = new zharp_span();
+    span->detached = detached;
     span->name = name && *name ? name : "(unnamed)";
     span->start = now_nanos();
     span->span_id = random_hex(8);
@@ -327,7 +330,7 @@ static zharp_span *start_span(const char *name, const char *traceparent) {
         span->trace_id = random_hex(16);
         span->sampled = s->config.tracing && sample(s->config.sample_rate);
     }
-    t_spans.push_back(span);
+    if (!detached) t_spans.push_back(span);
     return span;
 }
 
@@ -551,6 +554,13 @@ ZHARP_NOINLINE void zharp_capture_message(zharp_level_t level, const char *messa
     capture(ZHARP_RETURN_ADDRESS(), severity, "Message", message);
 }
 
+int zharp_set_crash_reason(const char *type, const char *message) {
+    // Crash reporting outlives zharp_shutdown, so this does too.
+    if (!crash_enabled()) return 0;
+    crash_set_exception(type && *type ? type : "Error", message && *message ? message : "fatal error");
+    return 1;
+}
+
 void zharp_log(zharp_level_t level, const char *message) {
     State *s = g_state;
     if (!s || !message) return;
@@ -626,6 +636,10 @@ zharp_span_t *zharp_start_span(const char *name) {
 
 zharp_span_t *zharp_start_span_from(const char *name, const char *traceparent) {
     return start_span(name, traceparent);
+}
+
+zharp_span_t *zharp_start_async_span(const char *name) {
+    return start_span(name, nullptr, true);
 }
 
 void zharp_span_set_kind(zharp_span_t *span, int kind) {
@@ -705,6 +719,11 @@ void zharp_end_span(zharp_span_t *span) {
         }
         transport_enqueue(Signal::Traces, span_json(*span, end));
     }
+    if (span->detached) {
+        // On no thread's stack of open spans.
+        delete span;
+        return;
+    }
     if (span->thread != std::this_thread::get_id()) {
         // Its own thread's stack still holds it: freed there.
         span->ended_elsewhere.store(true);
@@ -720,8 +739,11 @@ void zharp_end_span(zharp_span_t *span) {
 }
 
 int zharp_traceparent(char *out, size_t size) {
-    zharp_span *span = current_span();
-    if (!out || size < 56 || !span) return 0;
+    return zharp_span_traceparent(current_span(), out, size);
+}
+
+int zharp_span_traceparent(const zharp_span_t *span, char *out, size_t size) {
+    if (!out || size < 56 || !span || span->noop) return 0;
     snprintf(out, size, "00-%s-%s-%s", span->trace_id.c_str(), span->span_id.c_str(), span->sampled ? "01" : "00");
     return 1;
 }

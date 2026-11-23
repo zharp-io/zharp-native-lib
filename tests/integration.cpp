@@ -83,7 +83,25 @@ static void everything_on_the_wire() {
             charge_card();
         }
         zharp_capture_error("InventoryError", "SKU 1042 is out of stock");
+
+        // An async span: a child of checkout that never becomes this thread's current span.
+        std::string before = zharp_log_correlation();
+        zharp_span_t *call = zharp_start_async_span("GET api.example.com");
+        CHECK_EQ(zharp_log_correlation(), before);
+        char own[64] = {0};
+        CHECK(zharp_span_traceparent(call, own, sizeof own) == 1);
+        CHECK(strncmp(own, traceparent, 36) == 0);  // the same trace…
+        CHECK(strcmp(own, traceparent) != 0);       // …its own span ID
+        {
+            zharp::Span after("render");  // a child of checkout, not of the call
+        }
+        zharp_span_set_kind(call, 2);
+        zharp_end_span(call);
     }
+    // The current span is gone with its scope.
+    CHECK(zharp_traceparent(traceparent, sizeof traceparent) == 0);
+    // Crash reporting is off here: a crash reason can't be recorded.
+    CHECK(zharp_set_crash_reason("qFatal", "nothing to crash into") == 0);
     zharp_capture_message(ZHARP_LEVEL_WARN, "checkout took 12 s");
     {
         // A trace continued from a request's traceparent header.
@@ -134,6 +152,19 @@ static void everything_on_the_wire() {
     CHECK(contains(traces, "\"traceId\":\"0af7651916cd43dd8448eb211c80319c\",\"spanId\":\""));
     CHECK(contains(traces, "\"parentSpanId\":\"b7ad6b7169203331\""));
     CHECK(contains(traces, "\"kind\":2"));
+    // The async span and the span started while it was open are both children of checkout.
+    {
+        auto span_start = [&](const std::string &name) { return traces.rfind("{\"traceId\"", traces.find("\"name\":\"" + name + "\"")); };
+        auto field = [&](const std::string &name, const std::string &key) {
+            size_t start = span_start(name), end = traces.find("\"name\":", start);
+            size_t at = traces.find("\"" + key + "\":\"", start);
+            return at < end ? traces.substr(at + key.size() + 4, 16) : std::string();
+        };
+        CHECK(contains(traces, "\"name\":\"GET api.example.com\""));
+        CHECK_EQ(field("GET api.example.com", "parentSpanId"), field("checkout", "spanId"));
+        CHECK_EQ(field("render", "parentSpanId"), field("checkout", "spanId"));
+        CHECK(contains(traces, "\"kind\":3"));
+    }
 
     // The key goes as a bearer token.
     bool authorized = false;
