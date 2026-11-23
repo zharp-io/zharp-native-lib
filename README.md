@@ -123,9 +123,7 @@ ZHARP_AUTH_TOKEN=… npx @zharp/cli debug-files upload build/ --app <id> --inclu
 
 On macOS the DWARF stays in the object files until `dsymutil` gathers it into a `.dSYM`; upload
 the `.dSYM` together with the binary (the binary has the unwind tables, the `.dSYM` the files and
-lines). On ARM64 (Linux, Android, Apple) build with `-fno-omit-frame-pointer`: a crash in or under
-`abort()` can only be walked back into your code through libc when your functions keep their frame
-records.
+lines).
 
 ## Crashpad
 
