@@ -1,16 +1,28 @@
 @PACKAGE_INIT@
 
-# find_package(zharp): the zharp::zharp target, crashpad_handler, and the CMake helpers
-# zharp_add_crash_handler(<target>) and zharp_upload_debug_files(<target> APP <id>).
+# find_package(zharp): the zharp::zharp target, crashpad_handler (zharp::crashpad_handler), and the
+# CMake helpers zharp_add_crash_handler(<target>) and zharp_upload_debug_files(<target> APP <id>).
 
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 if(NOT WIN32)
     find_dependency(CURL)
 endif()
+
 set(ZHARP_CRASHPAD @ZHARP_CRASHPAD@)
-if(ZHARP_CRASHPAD)
-    find_dependency(crashpad CONFIG HINTS "${CMAKE_CURRENT_LIST_DIR}/../crashpad")
+if(ZHARP_CRASHPAD AND NOT TARGET crashpad::client)
+    # Crashpad's own crashpad-config.cmake configures crashpad::zlib before it defines it (with
+    # the system zlib, as on Linux), so its targets are loaded here instead, in the right order.
+    set(_zharp_crashpad_zlib_system @CRASHPAD_ZLIB_SYSTEM@)
+    if(_zharp_crashpad_zlib_system)
+        find_dependency(ZLIB)
+    endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/../crashpad/crashpad-targets.cmake")
+    if(_zharp_crashpad_zlib_system)
+        target_include_directories(crashpad::zlib INTERFACE ${ZLIB_INCLUDE_DIRS})
+        target_compile_definitions(crashpad::zlib INTERFACE ${ZLIB_COMPILE_DEFINITIONS})
+        target_link_libraries(crashpad::zlib INTERFACE ${ZLIB_LIBRARIES})
+    endif()
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/zharpTargets.cmake")
