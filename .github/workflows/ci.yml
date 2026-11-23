@@ -66,9 +66,25 @@ jobs:
           cmake --build consumer-build --config RelWithDebInfo
           ctest --test-dir consumer-build -C RelWithDebInfo --output-on-failure
 
-      - name: Kernel log (which process crashed, and where)
+      - name: Crash diagnostics (Linux)
         if: failure() && runner.os == 'Linux'
-        run: sudo dmesg | tail -n 60
+        run: |
+          sudo dmesg | grep -iE 'segfault|traps|crashpad|shop' | tail -n 20 || true
+          echo "ptrace_scope: $(cat /proc/sys/kernel/yama/ptrace_scope)"
+          sudo apt-get install -y -qq --no-install-recommends gdb strace > /dev/null
+          export ZHARP_KEY=zpk_e2e ZHARP_ENDPOINT=http://127.0.0.1:9/api/v1/otlp ZHARP_DATABASE_PATH="$RUNNER_TEMP/diag" ZHARP_DEBUG=1
+          mkdir -p "$RUNNER_TEMP/cores"
+          echo "$RUNNER_TEMP/cores/core.%e.%p" | sudo tee /proc/sys/kernel/core_pattern
+          ulimit -c unlimited
+          build/examples/shop abort || echo "exited with $?"
+          for core in "$RUNNER_TEMP"/cores/core.*; do
+            echo "== $core"
+            exe=build/examples/shop; case "$core" in *crashpad*) exe=build/crashpad/handler/crashpad_handler ;; esac
+            gdb -batch -ex 'info signals SIGSEGV' -ex 'thread apply all bt 20' "$exe" "$core" 2>&1 | grep -v '^\[New LWP' | head -n 80
+          done
+          strace -f -e trace=process,signal -o "$RUNNER_TEMP/strace.txt" build/examples/shop abort || true
+          echo "clone/fork calls: $(grep -cE 'clone|fork' "$RUNNER_TEMP/strace.txt")"
+          head -n 120 "$RUNNER_TEMP/strace.txt"
 
       - uses: actions/upload-artifact@v4
         if: failure()
