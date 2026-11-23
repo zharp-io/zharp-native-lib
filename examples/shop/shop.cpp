@@ -10,7 +10,9 @@
 
 NOINLINE int Shop::checkout(Order &order) {
     zharp_add_breadcrumb("shop", "checkout started");
-    return order.cart->total();
+    int total = order.cart->total();
+    zharp_logf(ZHARP_LEVEL_INFO, "checkout total %d", total);
+    return total;
 }
 
 NOINLINE void Shop::charge(int cents) {

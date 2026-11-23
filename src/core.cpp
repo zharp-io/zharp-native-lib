@@ -328,7 +328,6 @@ static zharp_span *start_span(const char *name, const char *traceparent) {
         span->sampled = s->config.tracing && sample(s->config.sample_rate);
     }
     t_spans.push_back(span);
-    if (crash_enabled()) crash_set("trace_id", span->trace_id);
     return span;
 }
 
@@ -718,8 +717,6 @@ void zharp_end_span(zharp_span_t *span) {
         }
     }
     delete span;
-    zharp_span *now = current_span();
-    if (crash_enabled()) crash_set("trace_id", now ? now->trace_id : std::string());
 }
 
 int zharp_traceparent(char *out, size_t size) {
