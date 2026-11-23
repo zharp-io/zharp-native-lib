@@ -60,15 +60,14 @@ case "$SHOP" in
        for arch in $(lipo -archs "$SHOP"); do sym -a "$arch" "$OUT/shop.dSYM/Contents/Resources/DWARF/shop" "$SHOP"; done
      else
        sym "$SHOP"
-       if [ "$(uname -m)" = aarch64 ]; then
-         # On ARM64 the walk can't get from abort() (libc) back into the app by frame pointers alone:
-         # the caller's stack pointer isn't in the frame record, and the app's unwind rules start
-         # from it. libc's and libstdc++'s own unwind tables (.eh_frame, no debug info needed) do
-         # it, as a symbol server for the distribution's libraries would.
-         for lib in libc.so.6 libstdc++.so.6; do
-           sym "$(ldd "$SHOP" | awk -v l="$lib" '$1 == l { print $3 }')"
-         done
-       fi
+       # Without unwind tables for libc the walk from abort() back into the app is a guess: on ARM64
+       # the frame-pointer chain doesn't give the caller's stack pointer, and on x86-64 a stack scan
+       # can pick a stale return address (it did with clang). libc's and libstdc++'s own unwind
+       # tables (.eh_frame, no debug info needed) settle it, as a symbol server for the
+       # distribution's libraries would.
+       for lib in libc.so.6 libstdc++.so.6; do
+         sym "$(ldd "$SHOP" | awk -v l="$lib" '$1 == l { print $3 }')"
+       done
      fi ;;
 esac
 
