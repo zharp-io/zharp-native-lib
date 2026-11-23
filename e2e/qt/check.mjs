@@ -26,7 +26,8 @@ for (const name of readdirSync(join(out, 'artifacts')).filter((n) => n.endsWith(
   const [, , , id, debugFile] = readFileSync(file, 'utf8').split('\n', 1)[0].trim().split(' ');
   const dir = join(symbols, debugFile, id);
   mkdirSync(dir, { recursive: true });
-  copyFileSync(file, join(dir, `${debugFile}.sym`));
+  // minidump-walker.ts symbolPath(): <debug file>/<DEBUG ID>/<debug file without .pdb>.sym
+  copyFileSync(file, join(dir, `${debugFile.replace(/\.pdb$/i, '')}.sym`));
   syms.set(id, readFileSync(file, 'utf8'));
   console.log(`symbols: ${debugFile} ${id}`);
 }

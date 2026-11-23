@@ -19,6 +19,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 namespace zharp {
@@ -38,6 +39,7 @@ static QByteArray message_text(const QMessageLogContext &context, const QString 
 
 /** qWarning and qCritical: breadcrumbs (and logs with ZHARP_LOGS=true). qFatal: the crash's name. */
 static void message_handler(QtMsgType type, const QMessageLogContext &context, const QString &message) {
+    bool crash_named = false;
     if (!t_inside) {
         t_inside = true;
         switch (type) {
@@ -52,7 +54,8 @@ static void message_handler(QtMsgType type, const QMessageLogContext &context, c
                 zharp_log(ZHARP_LEVEL_FATAL, message_text(context, message).constData());
                 // Qt aborts once the handlers return: Crashpad's report reads "qFatal: <message>".
                 // Without crash reporting, the error goes now, before the process ends.
-                if (!zharp_set_crash_reason("qFatal", text.constData())) {
+                crash_named = zharp_set_crash_reason("qFatal", text.constData()) != 0;
+                if (!crash_named) {
                     zharp_capture_error("qFatal", text.constData());
                     zharp_flush(3000);
                 }
@@ -68,6 +71,14 @@ static void message_handler(QtMsgType type, const QMessageLogContext &context, c
     } else {
         fprintf(stderr, "%s\n", qPrintable(qFormatLogMessage(type, context, message)));
     }
+#if defined(Q_OS_WIN)
+    // On Windows Qt ends a qFatal with TerminateProcess, which no crash reporter sees. Abort here
+    // instead, once the previous handler has had the message: Crashpad's SIGABRT handler writes
+    // the dump.
+    if (crash_named) abort();
+#else
+    (void)crash_named;
+#endif
 }
 
 // ── Screens ─────────────────────────────────────────────────────────────────
