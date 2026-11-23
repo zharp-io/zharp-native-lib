@@ -31,13 +31,16 @@ for (const name of readdirSync(join(out, 'artifacts')).filter((n) => n.endsWith(
   copyFileSync(file, join(dir, `${debugFile.replace(/\.pdb$/i, '')}.sym`));
   console.log(`symbols: ${debugFile} ${id} (uploaded by the CLI as ${meta.name})`);
 }
-check(syms.size > 0, 'the CLI uploaded .sym files');
+check(syms.size > 0, '.sym files uploaded');
 
 // ── Crashes ─────────────────────────────────────────────────────────────────
+// Names as each compiler's debug info writes them ("run(char const*)" from DWARF, "run(const char *)"
+// from a PDB); crash reasons as each OS has them.
+const ABORT = /^(SIGABRT|EXC_CRASH|EXC_SOFTWARE|STATUS_FATAL_APP_EXIT|0x40000015)/;
 const expected = {
-  segv: { reason: /^SIGSEGV/, frames: ['Cart::total() const', 'Shop::checkout(Order&)', 'run(char const*)', 'main'], file: 'cart.cpp' },
-  abort: { reason: /^SIGABRT/, frames: ['validate(int)', 'run(char const*)', 'main'], file: 'main.cpp' },
-  throw: { reason: /^SIGABRT/, frames: ['load_inventory()', 'run(char const*)', 'main'], file: 'main.cpp', exception: ['std::runtime_error', 'inventory file is corrupt'] },
+  segv: { reason: /^(SIGSEGV|SIGBUS|EXC_BAD_ACCESS|EXCEPTION_ACCESS_VIOLATION)/, frames: [/^Cart::total\(/, /^Shop::checkout\(/, /^run\(/, /^main$/], file: 'cart.cpp' },
+  abort: { reason: ABORT, frames: [/^validate\(/, /^run\(/, /^main$/], file: 'main.cpp' },
+  throw: { reason: ABORT, frames: [/^load_inventory\(/, /^run\(/, /^main$/], file: 'main.cpp', exception: ['std::runtime_error', 'inventory file is corrupt'] },
 };
 
 const dumps = readdirSync(join(out, 'minidumps')).filter((n) => n.endsWith('.dmp')).sort((a, b) => parseInt(a) - parseInt(b));
@@ -62,7 +65,7 @@ dumps.forEach((name, i) => {
   check(key === 'zpk_e2e', 'the key came in the URL');
   check(want.reason.test(walk.crash_info.type), `crash reason ${walk.crash_info.type}`);
   const named = thread.frames.flatMap((f) => [...(f.inlines ?? []).map((x) => x.function), f.function]).filter(Boolean);
-  for (const fn of want.frames) check(named.includes(fn), `frame ${fn}`);
+  for (const fn of want.frames) check(named.some((name) => fn.test(name)), `frame ${fn.source}`);
   check(thread.frames.some((f) => (f.file ?? '').endsWith(want.file) && f.line > 0), `a frame in ${want.file} with its line`);
   check(annotations['zharp.release'] === '1.0.0', 'release 1.0.0');
   check(annotations['zharp.environment'] === 'e2e', 'environment e2e');
@@ -136,9 +139,9 @@ const errors = records.filter(({ r }) => attr(r.attributes, 'exception.type'));
 console.log(`\nhandled errors: ${errors.map(({ r }) => attr(r.attributes, 'exception.type')).join(', ')}`);
 // C++ keeps no stack of a throw: a caught exception's stack is where it was reported, in run()'s catch.
 const wanted = {
-  PaymentDeclined: ['run(char const*)', 'main.cpp:'],
-  InventoryError: ['run(char const*)', 'main.cpp:'],
-  Message: ['run(char const*)', 'main.cpp:'],
+  PaymentDeclined: [/ run\(/, 'main.cpp:'],
+  InventoryError: [/ run\(/, 'main.cpp:'],
+  Message: [/ run\(/, 'main.cpp:'],
 };
 for (const [type, [fn, file]] of Object.entries(wanted)) {
   const found = errors.find(({ r }) => attr(r.attributes, 'exception.type') === type);
@@ -159,7 +162,7 @@ for (const [type, [fn, file]] of Object.entries(wanted)) {
   }
   console.log(`  ${type}:\n${readable.slice(0, 8).map((l) => `      ${l}`).join('\n')}`);
   const culprit = readable.slice(1).find((l) => !/\bzharp(::|_)/.test(l));
-  check(!!culprit && culprit.includes(fn) && culprit.includes(file), `${type}: first frame outside Zharp is ${fn} in ${file.replace(/:$/, '')} (named from the .sym)`);
+  check(!!culprit && fn.test(culprit) && culprit.includes(file), `${type}: first frame outside Zharp is run() in ${file.replace(/:$/, '')} (named from the .sym)`);
   check(attr(found.r.attributes, 'zharp.handled') === 'true', `${type} marked handled`);
   check(attr(found.resource.attributes, 'service.version') === '1.0.0', `${type} carries the release`);
   check((attr(found.r.attributes, 'zharp.breadcrumbs') ?? '').includes('info shop started'), `${type} carries the breadcrumbs`);

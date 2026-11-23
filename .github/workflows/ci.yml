@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux x64 (gcc), os: ubuntu-latest, cc: gcc, cxx: g++ }
+          - { name: Linux x64 (clang), os: ubuntu-latest, cc: clang, cxx: clang++ }
+          - { name: Linux arm64 (gcc), os: ubuntu-24.04-arm, cc: gcc, cxx: g++ }
+          - { name: macOS universal, os: macos-latest, universal: true }
+          - { name: Windows x64 (MSVC), os: windows-latest, msvc: true }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libcurl4-openssl-dev zlib1g-dev
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_INSTALL_PREFIX=$PWD/install
+
+      - name: Configure (macOS, arm64 + x86_64)
+        if: runner.os == 'macOS'
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DCMAKE_INSTALL_PREFIX=$PWD/install
+
+      - name: Configure (Windows, MSVC)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install"
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      - name: Both slices
+        if: runner.os == 'macOS'
+        run: lipo -archs build/examples/shop && lipo -archs build/crashpad/handler/crashpad_handler
+
+      - name: Tests
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure
+
+      - name: Crash, walk and check
+        shell: bash
+        run: bash e2e/ci.sh build "$RUNNER_TEMP/e2e"
+
+      - name: Install, then find_package(zharp) from a fresh project
+        shell: bash
+        run: |
+          cmake --install build --config RelWithDebInfo
+          cmake -S tests/consumer -B consumer-build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH="$PWD/install" ${{ matrix.universal && '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"' || '' }}
+          cmake --build consumer-build --config RelWithDebInfo
+          ctest --test-dir consumer-build -C RelWithDebInfo --output-on-failure
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-${{ matrix.os }}-${{ matrix.cc || 'default' }}
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
+
+  without-crashpad:
+    name: Linux, ZHARP_CRASHPAD=OFF, shared library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libcurl4-openssl-dev
+      - run: cmake -S . -B build -G Ninja -DZHARP_CRASHPAD=OFF -DBUILD_SHARED_LIBS=ON
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
