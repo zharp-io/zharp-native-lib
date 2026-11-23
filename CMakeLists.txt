@@ -91,7 +91,8 @@ endif()
 if(MSVC)
     target_compile_options(zharp PRIVATE /W4 /utf-8)
 else()
-    target_compile_options(zharp PRIVATE -Wall -Wextra)
+    # Frame records let a minidump walk get from abort() and the terminate handler back to the app (ARM64).
+    target_compile_options(zharp PRIVATE -Wall -Wextra -fno-omit-frame-pointer)
 endif()
 
 set(ZHARP_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake" CACHE INTERNAL "")

@@ -56,7 +56,8 @@ case "$SHOP" in
        # The DWARF stays in the .o files until dsymutil gathers it; without the .dSYM a .sym has
        # names (from the symbol table) but no files or lines.
        dsymutil "$SHOP" -o "$OUT/shop.dSYM"
-       for arch in $(lipo -archs "$SHOP"); do sym -a "$arch" "$OUT/shop.dSYM/Contents/Resources/DWARF/shop"; done
+       # Both files: files and lines from the .dSYM, unwind tables (STACK CFI) from the binary.
+       for arch in $(lipo -archs "$SHOP"); do sym -a "$arch" "$OUT/shop.dSYM/Contents/Resources/DWARF/shop" "$SHOP"; done
      else
        sym "$SHOP"
      fi ;;

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace zharp {
@@ -141,5 +142,7 @@ void crash_set(const char *which, const std::string &value);  // "user.id", "ses
 void crash_set_tag(const std::string &key, const std::string &value);
 /** Called from the std::terminate handler: the uncaught exception's type and message. */
 void crash_set_exception(const std::string &type, const std::string &message);
+/** "std::runtime_error" for a type_info, as each compiler names it. */
+std::string exception_type_name(const std::type_info &type);
 
 }  // namespace zharp
