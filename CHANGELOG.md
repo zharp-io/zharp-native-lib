@@ -26,3 +26,11 @@ The first release: a C SDK with a C++ layer, for Windows, macOS and Linux.
   that can't be sent.
 - CMake: `zharp::zharp`, `zharp_add_crash_handler`, `zharp_upload_debug_files`; FetchContent,
   `add_subdirectory` and `find_package(zharp)`; a vcpkg overlay port and a Conan recipe.
+- `zharp_start_async_span` (a span that doesn't become the thread's current one, for work that
+  finishes later), `zharp_span_traceparent`, and `zharp_set_crash_reason` (names a crash that is
+  about to happen, for frameworks that abort on purpose).
+- Qt (`zharp::qt`, `zharp_qt.h`, Qt 6.5+ and 5.15, CMake and qmake): `ZharpQt::init(app)`
+  chains a message handler (`qWarning` and `qCritical` as breadcrumbs or logs, `qFatal` naming
+  the crash), sets `screen.name` from the focused window and QML `StackView` pages, and
+  `ZharpQt::NetworkAccessManager` / `ZharpQt::instrument(engine)` record HTTP calls as spans
+  with headers and `traceparent`. vcpkg feature `qt`, Conan option `qt`.

@@ -92,6 +92,51 @@ Daemons and services set `options.sessions = 0` (no sessions or device ID).
 | `disabled` | `ZHARP_DISABLED` | off |
 | `debug` | `ZHARP_DEBUG` | off (prints what the SDK does to stderr) |
 
+## Qt
+
+`zharp::qt` is a small layer for Qt 6.5+ and Qt 5.15 apps (`zharp_qt.h`), built when the project
+that adds Zharp has found Qt (or with `-DZHARP_QT=ON`; `-DZHARP_QT_MAJOR=5` picks Qt 5):
+
+```cmake
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+FetchContent_MakeAvailable(zharp)                         # after Qt
+target_link_libraries(my_app PRIVATE Qt6::Widgets zharp::qt)
+zharp_add_crash_handler(my_app)
+```
+
+```cpp
+#include <zharp.hpp>
+#include <zharp_qt.h>
+
+int main(int argc, char **argv) {
+    zharp::Init zharp;                       // or with options, as above
+    QApplication app(argc, argv);
+    ZharpQt::init(app);
+    ...
+}
+```
+
+- **Qt's messages:** a message handler, chained to the one before it. `qWarning` and `qCritical`
+  are breadcrumbs (logs with `ZHARP_LOGS=true`), with the category in front when it isn't
+  `default`. `qFatal` names the crash Qt ends in (`qFatal: <message>`, through
+  `zharp_set_crash_reason`), or is sent as an error before Qt aborts when crash reporting is off.
+- **Screens:** `screen.name` on everything recorded and on crashes: the focused window (a QWidget
+  window by its class, else its `objectName` or title; a `QQuickView` by its QML file) or the
+  page on top of a QML `StackView` (its `objectName`, else its QML type), with a `navigation`
+  breadcrumb at each change. Menus and tooltips don't count. `ZharpQt::setScreen(name)` for your
+  own navigation; `Options::screens = false` to name every screen yourself.
+- **Network:** `ZharpQt::NetworkAccessManager`, a `QNetworkAccessManager` whose HTTP calls are
+  client spans (`GET api.example.com`, the URL without its query, the status, request and
+  response headers with secrets `[REDACTED]`) and carry `traceparent`.
+  `ZharpQt::instrument(engine)` gives a QML engine one (XMLHttpRequest, remote images).
+- Qt Widgets is used only when your target links it (`QT_WIDGETS_LIB`), and Qt Quick is read
+  through the meta-object system, so `zharp::qt` itself needs only Qt Core, Gui and Network.
+
+qmake: build and install the SDK as shared libraries (`-DZHARP_QT=ON -DBUILD_SHARED_LIBS=ON`),
+then `include(<prefix>/share/zharp/zharp_qt.pri)` in your `.pro`: it links `zharp_qt` and
+`zharp` and copies `crashpad_handler` (and on Windows the DLLs) next to your executable. vcpkg:
+the `qt` feature; Conan: `-o zharp/*:qt=True`.
+
 ## How it works
 
 - **Crashes:** Crashpad's handler writes a minidump and POSTs it to
@@ -145,9 +190,19 @@ docker run --rm -v "$PWD:/src" -v <zharp-js-sdk>/packages/cli:/cli:ro -v "$PWD/e
   -e CC=clang -e CXX=clang++ -e NAME=clang zharp-native-sdk-dev sh /src/e2e/run.sh
 ```
 
+The Qt layer end to end (Debian's Qt 6.8 and Qt 5.15, Xvfb; a widgets shop and a QML shop crash,
+call `qFatal` and look prices up over HTTP; the Qt 5 shop is built with qmake against an
+installed shared build):
+
+```sh
+docker build -t zharp-native-sdk-qt e2e/qt
+docker run --rm -v "$PWD:/src" -v <zharp-js-sdk>/packages/cli:/cli:ro -v "$PWD/e2e/out:/out" \
+  zharp-native-sdk-qt sh /src/e2e/qt/run.sh
+```
+
 GitHub Actions (`.github/workflows/ci.yml`) runs the tests and the crash check on Linux x64 and
-arm64, macOS (universal) and Windows (MSVC). Packaging: `ports/vcpkg/zharp` (an overlay port) and
-`conanfile.py`.
+arm64, macOS (universal) and Windows (MSVC), and the Qt layer with Qt 6.8 on all three plus
+Ubuntu's Qt 5.15. Packaging: `ports/vcpkg/zharp` (an overlay port) and `conanfile.py`.
 
 ## License
 

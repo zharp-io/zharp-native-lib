@@ -22,8 +22,8 @@ class ZharpConan(ConanFile):
     description = "Zharp for C and C++: crash reports through Crashpad, handled errors, breadcrumbs, logs and traces"
     topics = ("crash-reporting", "crashpad", "minidump", "error-monitoring", "observability")
     settings = "os", "arch", "compiler", "build_type"
-    options = {"crashpad": [True, False], "fPIC": [True, False]}
-    default_options = {"crashpad": True, "fPIC": True}
+    options = {"crashpad": [True, False], "qt": [True, False], "fPIC": [True, False]}
+    default_options = {"crashpad": True, "qt": False, "fPIC": True}
 
     def config_options(self):
         if self.settings.os == "Windows":
@@ -33,6 +33,9 @@ class ZharpConan(ConanFile):
         if self.settings.os != "Windows":
             self.requires("libcurl/[>=7.78 <9]")
             self.requires("zlib/[>=1.2.11 <2]")
+        if self.options.qt:
+            # zharp::qt: Qt log messages, screens and QNetworkAccessManager spans.
+            self.requires("qt/[>=6.5 <7]", transitive_headers=True, transitive_libs=True)
 
     def layout(self):
         cmake_layout(self)
@@ -44,6 +47,9 @@ class ZharpConan(ConanFile):
     def generate(self):
         toolchain = CMakeToolchain(self)
         toolchain.variables["ZHARP_CRASHPAD"] = bool(self.options.crashpad)
+        toolchain.variables["ZHARP_QT"] = bool(self.options.qt)
+        if self.options.qt:
+            toolchain.variables["ZHARP_QT_MAJOR"] = 6
         toolchain.variables["ZHARP_BUILD_TESTS"] = False
         toolchain.variables["ZHARP_BUILD_EXAMPLES"] = False
         toolchain.variables["ZHARP_INSTALL"] = True

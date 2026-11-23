@@ -42,9 +42,13 @@ file(RENAME "${MINI_CHROMIUM_PATH}" "${CRASHPAD_PATH}/third_party/mini_chromium/
 file(RENAME "${ZLIB_PATH}" "${CRASHPAD_PATH}/third_party/zlib/zlib")
 file(RENAME "${LSS_PATH}" "${CRASHPAD_PATH}/third_party/lss/lss")
 
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS FEATURES qt ZHARP_QT)
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
+        ${FEATURE_OPTIONS}
+        -DZHARP_QT_MAJOR=6
         -DZHARP_CRASHPAD_SOURCE_DIR=${CRASHPAD_PATH}
         -DZHARP_BUILD_TESTS=OFF
         -DZHARP_BUILD_EXAMPLES=OFF

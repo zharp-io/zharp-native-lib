@@ -18,5 +18,20 @@
       "name": "vcpkg-cmake-config",
       "host": true
     }
-  ]
+  ],
+  "features": {
+    "qt": {
+      "description": "The Qt layer, zharp::qt: Qt log messages, screens and QNetworkAccessManager spans (Qt 6)",
+      "dependencies": [
+        {
+          "name": "qtbase",
+          "default-features": false,
+          "features": [
+            "gui",
+            "network"
+          ]
+        }
+      ]
+    }
+  }
 }
