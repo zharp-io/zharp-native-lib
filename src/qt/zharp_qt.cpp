@@ -4,6 +4,7 @@
 #include "zharp_qt.h"
 
 #include <QtCore/QByteArray>
+#include <QtCore/QEvent>
 #include <QtCore/QFileInfo>
 #include <QtCore/QList>
 #include <QtCore/QMetaMethod>
@@ -193,12 +194,40 @@ static QString window_name(Screens &screens, QWindow *window) {
 
 void Screens::refresh() {
     if (!automatic) return;
+    auto counts = [](QWindow *w) {
+        const Qt::WindowType type = w->type();
+        return type != Qt::Popup && type != Qt::ToolTip && type != Qt::SplashScreen;  // menus, tooltips
+    };
     QWindow *window = QGuiApplication::focusWindow();
-    if (!window) return;  // the app went to the background: the screen stays what it was
-    const Qt::WindowType type = window->type();
-    if (type == Qt::Popup || type == Qt::ToolTip || type == Qt::SplashScreen) return;  // menus, tooltips
+    if (!window) {
+        // Nothing has focus: the app is in the background (the screen stays what it was), or no
+        // window manager hands out focus (a kiosk, a test under Xvfb). With one window shown,
+        // that is the screen.
+        const QWindowList windows = QGuiApplication::topLevelWindows();
+        for (QWindow *w : windows) {
+            if (!w->isVisible() || !counts(w)) continue;
+            if (window) return;  // more than one: can't tell which
+            window = w;
+        }
+        if (!window) return;
+    }
+    if (!counts(window)) return;
     set(window_name(*this, window));
 }
+
+/** Windows shown and hidden: a look at the screen (focus alone misses windows that never get it). */
+class WindowWatcher : public QObject {
+public:
+    explicit WindowWatcher(Screens *screens, QObject *parent) : QObject(parent), screens_(screens) {}
+    bool eventFilter(QObject *object, QEvent *event) override {
+        const QEvent::Type type = event->type();
+        if ((type == QEvent::Show || type == QEvent::Hide) && object->isWindowType()) screens_->schedule();
+        return false;
+    }
+
+private:
+    Screens *screens_;
+};
 
 }  // namespace qt
 }  // namespace zharp
@@ -318,6 +347,7 @@ void start(QCoreApplication *app, const Options &options, WindowNamer widgets) {
     QObject::connect(timer, &QTimer::timeout, app, [screens] { screens->refresh(); });
     screens->timer = timer;
     QObject::connect(gui, &QGuiApplication::focusWindowChanged, timer, [timer](QWindow *) { timer->start(); });
+    app->installEventFilter(new zharp::qt::WindowWatcher(screens, app));
     screens->schedule();
 }
 
