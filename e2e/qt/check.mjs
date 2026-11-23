@@ -18,6 +18,7 @@ const check = (ok, what) => {
 
 // ── The uploaded .sym files, laid out as the backend's walker reads them ────
 const symbols = join(out, 'symbols');
+const syms = new Map(); // debug ID → .sym text
 for (const name of readdirSync(join(out, 'artifacts')).filter((n) => n.endsWith('.json'))) {
   const meta = JSON.parse(readFileSync(join(out, 'artifacts', name), 'utf8'));
   if (meta.kind !== 'breakpad-sym') continue;
@@ -26,6 +27,7 @@ for (const name of readdirSync(join(out, 'artifacts')).filter((n) => n.endsWith(
   const dir = join(symbols, debugFile, id);
   mkdirSync(dir, { recursive: true });
   copyFileSync(file, join(dir, `${debugFile}.sym`));
+  syms.set(id, readFileSync(file, 'utf8'));
   console.log(`symbols: ${debugFile} ${id}`);
 }
 
@@ -69,11 +71,20 @@ dumps.forEach((name, i) => {
   });
   check(key === 'zpk_e2e', 'the key came in the URL');
   check(want.reason.test(walk.crash_info.type), `crash reason ${walk.crash_info.type}`);
+  // A crash the SDK named (qFatal) carries the stack recorded where it was named: Zharp reads that,
+  // because the walk can't unwind abort() through libraries it has no .sym for.
+  const recorded = annotations['zharp.exception.stacktrace'] ? named(annotations['zharp.exception.stacktrace'], annotations['zharp.exception.modules']) : null;
+  if (recorded) {
+    console.log('   recorded where it was named:');
+    recorded.slice(0, 12).forEach((c, n) => console.log(`   ${!SYSTEM.test(c.module) && !HANDLER.test(c.function ?? '') ? '*' : ' '}#${String(n).padEnd(3)}${c.function ?? `+${c.module_offset}`}${c.file ? ` (${c.file.split(/[\\/]/).pop()}:${c.line})` : ''} [${c.module}]`));
+  }
+  const frames = recorded ?? calls;
   // The first frame in the app (not Qt, the C library or Zharp) is where it went wrong.
-  const culprit = calls.find((c) => c.function && c.module && !SYSTEM.test(c.module) && !HANDLER.test(c.function));
+  const culprit = frames.find((c) => c.function && c.module && !SYSTEM.test(c.module) && !HANDLER.test(c.function));
   check(!!culprit && want.top.test(culprit.function), `first frame in the app: ${culprit?.function}`);
-  for (const fn of want.frames) check(calls.some((c) => fn.test(c.function ?? '')), `frame ${fn.source}`);
-  check(calls.some((c) => (c.file ?? '').endsWith(want.file) && c.line > 0), `a frame in ${want.file} with its line`);
+  for (const fn of want.frames) check(frames.some((c) => fn.test(c.function ?? '')), `frame ${fn.source}`);
+  check(frames.some((c) => (c.file ?? '').endsWith(want.file) && c.line > 0), `a frame in ${want.file} with its line`);
+  if (want.fatal) check(!!recorded, 'the stack where qFatal was called is in the report');
   check(calls.some((c) => /^(lib)?Qt[56]?[A-Z]\w*/.test(c.module ?? '') && SYSTEM.test(c.module)), "Qt's own frames are there (and not the app's)");
   check(annotations['zharp.service'] === shop, `service ${shop}`);
   check(annotations['zharp.release'] === '2.0.0', 'release 2.0.0');
@@ -90,6 +101,60 @@ dumps.forEach((name, i) => {
     check(!annotations['zharp.exception.type'], 'no crash reason recorded for a plain crash');
   }
 });
+
+/** A recorded "#0  module +0xoff" stack, named from the .sym files (FUNC, line and INLINE records) as the backend's breakpad-sym.ts reads them. */
+function named(stack, modulesText) {
+  const ids = new Map((modulesText ?? '').split('\n').map((l) => l.split('\t')).map(([n, id]) => [n, id]));
+  const out = [];
+  for (const line of stack.split('\n')) {
+    const m = /^#(\d+)\s+(?:(.+?) \[)?(.+?) \+(0x[0-9a-f]+)\]?$/.exec(line);
+    if (!m) continue;
+    const text = syms.get(ids.get(m[3]));
+    const found = text ? lookup(text, parseInt(m[4], 16) - 1) : [];
+    if (!found.length) out.push({ function: m[2], module: m[3], module_offset: m[4] });
+    for (const f of found) out.push({ function: f.name, file: f.file, line: f.line, module: m[3] });
+  }
+  return out;
+}
+
+function lookup(text, offset) {
+  const files = new Map();
+  const origins = new Map();
+  let hit = null;
+  let inside = false;
+  for (const line of text.split('\n')) {
+    const parts = line.trim().split(' ');
+    if (parts[0] === 'FILE') files.set(parts[1], parts.slice(2).join(' '));
+    else if (parts[0] === 'INLINE_ORIGIN') origins.set(parts[1], parts.slice(2).join(' '));
+    else if (parts[0] === 'FUNC') {
+      const k = parts[1] === 'm' ? 1 : 0;
+      const address = parseInt(parts[1 + k], 16);
+      inside = offset >= address && offset < address + parseInt(parts[2 + k], 16);
+      if (inside) hit = { name: parts.slice(4 + k).join(' '), file: '', line: null, inlines: [] };
+    } else if (parts[0] === 'PUBLIC') inside = false;
+    else if (inside && parts[0] === 'INLINE') {
+      for (let i = 5; i + 1 < parts.length; i += 2) {
+        const a = parseInt(parts[i], 16);
+        if (offset >= a && offset < a + parseInt(parts[i + 1], 16)) hit.inlines.push({ depth: +parts[1], line: +parts[2], file: parts[3], origin: parts[4] });
+      }
+    } else if (inside && /^[0-9a-f]+ [0-9a-f]+ \d+ \d+$/.test(line.trim())) {
+      const a = parseInt(parts[0], 16);
+      if (offset >= a && offset < a + parseInt(parts[1], 16)) Object.assign(hit, { line: +parts[2], file: files.get(parts[3]) });
+    }
+  }
+  if (!hit) return [];
+  const chain = hit.inlines.sort((a, b) => a.depth - b.depth);
+  const frames = [];
+  let file = hit.file;
+  let ln = hit.line;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    frames.push({ name: origins.get(chain[i].origin), file, line: ln });
+    file = files.get(chain[i].file);
+    ln = chain[i].line;
+  }
+  frames.push({ name: hit.name, file, line: ln });
+  return frames;
+}
 
 // ── The runs that didn't crash: the warning as a log, the HTTP spans ────────
 const read = (signal) =>

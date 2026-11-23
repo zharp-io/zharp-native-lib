@@ -14,6 +14,7 @@ NOINLINE void Gateway::send(int cents) {
 
 NOINLINE void Payments::charge(int cents) {
     gateway_->send(cents);
+    qInfo("charged %d", cents);  // after the call, so charge keeps its own frame (no tail call)
 }
 
 NOINLINE void Payments::openDatabase() {
