@@ -1,0 +1,3 @@
+[submodule "external/crashpad"]
+	path = external/crashpad
+	url = https://github.com/getsentry/crashpad.git

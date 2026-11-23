@@ -1,0 +1,14 @@
+Zharp for C and C++ (zharp-native) is MIT-licensed (see LICENSE).
+
+It builds and ships Crashpad (external/crashpad, from https://github.com/getsentry/crashpad, a
+CMake-friendly fork of https://chromium.googlesource.com/crashpad/crashpad), which is:
+
+  Copyright 2014 The Crashpad Authors
+  Licensed under the Apache License, Version 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+
+Crashpad in turn includes mini_chromium (BSD-3-Clause), zlib (zlib license),
+linux-syscall-support (BSD-3-Clause), getopt (public domain) and mpack (MIT). Their licenses are
+in external/crashpad/third_party.
+
+The crashpad_handler executable you ship next to your app is Crashpad's; keep this notice with it.
