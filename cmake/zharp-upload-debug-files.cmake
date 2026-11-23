@@ -1,0 +1,51 @@
+# Run by zharp_upload_debug_files() after a build: `npx @zharp/cli debug-files upload`.
+# Never fails the build: a missing token, Node.js or network is reported and skipped.
+
+cmake_minimum_required(VERSION 3.16)
+
+string(REPLACE "|" ";" ZHARP_FILES "${ZHARP_FILES}")
+string(REPLACE "|" ";" ZHARP_CONFIGS "${ZHARP_CONFIGS}")
+
+if(ZHARP_CONFIG AND NOT ZHARP_CONFIG IN_LIST ZHARP_CONFIGS)
+    return()
+endif()
+if(NOT ZHARP_CONFIG AND NOT "Release" IN_LIST ZHARP_CONFIGS)
+    return()
+endif()
+
+if("$ENV{ZHARP_AUTH_TOKEN}" STREQUAL "")
+    message(STATUS "Zharp: ZHARP_AUTH_TOKEN isn't set; debug files not uploaded (crashes show module +offset until they are)")
+    return()
+endif()
+if(NOT ZHARP_APP)
+    set(ZHARP_APP "$ENV{ZHARP_APP}")
+endif()
+if(NOT ZHARP_APP)
+    message(STATUS "Zharp: no app ID (APP in zharp_upload_debug_files, or ZHARP_APP); debug files not uploaded")
+    return()
+endif()
+
+find_program(ZHARP_NPX NAMES npx npx.cmd)
+if(NOT ZHARP_NPX)
+    message(STATUS "Zharp: npx (Node.js) not found; debug files not uploaded. Run: npx @zharp/cli debug-files upload <build dir> --app ${ZHARP_APP}")
+    return()
+endif()
+
+set(_existing "")
+foreach(_file IN LISTS ZHARP_FILES)
+    if(_file AND EXISTS "${_file}")
+        list(APPEND _existing "${_file}")
+    endif()
+endforeach()
+if(NOT _existing)
+    return()
+endif()
+
+set(_args --yes @zharp/cli debug-files upload ${_existing} --app ${ZHARP_APP})
+if(ZHARP_INCLUDE_SOURCES)
+    list(APPEND _args --include-sources)
+endif()
+execute_process(COMMAND "${ZHARP_NPX}" ${_args} RESULT_VARIABLE _result)
+if(NOT _result EQUAL 0)
+    message(WARNING "Zharp: debug-files upload failed (${_result}); the build itself is fine")
+endif()

@@ -1,0 +1,20 @@
+@PACKAGE_INIT@
+
+# find_package(zharp): the zharp::zharp target, crashpad_handler, and the CMake helpers
+# zharp_add_crash_handler(<target>) and zharp_upload_debug_files(<target> APP <id>).
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+if(NOT WIN32)
+    find_dependency(CURL)
+endif()
+set(ZHARP_CRASHPAD @ZHARP_CRASHPAD@)
+if(ZHARP_CRASHPAD)
+    find_dependency(crashpad CONFIG HINTS "${CMAKE_CURRENT_LIST_DIR}/../crashpad")
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/zharpTargets.cmake")
+set(ZHARP_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+include("${CMAKE_CURRENT_LIST_DIR}/zharpFunctions.cmake")
+
+check_required_components(zharp)
