@@ -63,7 +63,12 @@ dumps.forEach((name, i) => {
   }
   console.log(lines.map((l) => `    ${l}`).join('\n'));
   check(key === 'zpk_e2e', 'the key came in the URL');
-  check(want.reason.test(walk.crash_info.type), `crash reason ${walk.crash_info.type}`);
+  // macOS: an abort is a signal with no Mach exception behind it, so the EXC_CRASH Crashpad catches
+  // unwraps to exception 0 (ExcCrashRecoverOriginalException drops the signal number). Such a dump
+  // is an abort when its crashing thread is in abort().
+  const macAbort = want.reason === ABORT && /^Mac/.test(walk.system_info.os) && /^unknown 0x00000000 /.test(walk.crash_info.type) &&
+    thread.frames.slice(0, 4).some((f) => f.module === 'libsystem_c.dylib');
+  check(want.reason.test(walk.crash_info.type) || macAbort, `crash reason ${walk.crash_info.type}${macAbort ? ' (an abort on macOS)' : ''}`);
   const named = thread.frames.flatMap((f) => [...(f.inlines ?? []).map((x) => x.function), f.function]).filter(Boolean);
   for (const fn of want.frames) check(named.some((name) => fn.test(name)), `frame ${fn.source}`);
   check(thread.frames.some((f) => (f.file ?? '').endsWith(want.file) && f.line > 0), `a frame in ${want.file} with its line`);

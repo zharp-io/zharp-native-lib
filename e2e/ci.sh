@@ -16,7 +16,7 @@ rm -rf "$OUT" && mkdir -p "$OUT/artifacts" "$OUT/tools"
 
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64)   DS=dump_syms-x86_64-unknown-linux-gnu.tar.xz;   MS=minidump-stackwalk-x86_64-unknown-linux-musl.tar.xz ;;
-  Linux-aarch64)  DS=dump_syms-aarch64-unknown-linux-gnu.tar.xz;  MS=minidump-stackwalk-aarch64-unknown-linux-musl.tar.xz ;;
+  Linux-aarch64)  DS=dump_syms-aarch64-unknown-linux-gnu.tar.xz;  MS= ;;  # no prebuilt minidump-stackwalk: built below
   Darwin-arm64)   DS=dump_syms-aarch64-apple-darwin.tar.xz;       MS=minidump-stackwalk-aarch64-apple-darwin.tar.xz ;;
   Darwin-x86_64)  DS=dump_syms-x86_64-apple-darwin.tar.xz;        MS=minidump-stackwalk-x86_64-apple-darwin.tar.xz ;;
   MINGW*|MSYS*)   DS=dump_syms-x86_64-pc-windows-msvc.zip;        MS=minidump-stackwalk-x86_64-pc-windows-msvc.zip ;;
@@ -28,7 +28,12 @@ fetch() { # <base url> <archive>
     case "$2" in *.zip) unzip -qo "$2" ;; *) tar -xJf "$2" ;; esac)
 }
 fetch https://github.com/mozilla/dump_syms/releases/download/v2.3.9 "$DS"
-fetch https://github.com/rust-minidump/rust-minidump/releases/download/v0.27.0 "$MS"
+if [ -n "$MS" ]; then
+  fetch https://github.com/rust-minidump/rust-minidump/releases/download/v0.27.0 "$MS"
+else
+  # The same pinned version from crates.io, with its own lock file.
+  cargo install minidump-stackwalk --version 0.27.0 --locked --quiet --root "$OUT/tools/minidump-stackwalk"
+fi
 DUMP_SYMS=$(find "$OUT/tools" -type f \( -name dump_syms -o -name dump_syms.exe \) | head -1)
 STACKWALK_DIR=$(dirname "$(find "$OUT/tools" -type f \( -name minidump-stackwalk -o -name minidump-stackwalk.exe \) | head -1)")
 export PATH="$STACKWALK_DIR:$PATH"
@@ -48,7 +53,10 @@ sym() {
 case "$SHOP" in
   *.exe) sym "${SHOP%.exe}.pdb" ;;
   *) if [ "$(uname -s)" = Darwin ]; then
-       for arch in $(lipo -archs "$SHOP"); do sym -a "$arch" "$SHOP"; done
+       # The DWARF stays in the .o files until dsymutil gathers it; without the .dSYM a .sym has
+       # names (from the symbol table) but no files or lines.
+       dsymutil "$SHOP" -o "$OUT/shop.dSYM"
+       for arch in $(lipo -archs "$SHOP"); do sym -a "$arch" "$OUT/shop.dSYM/Contents/Resources/DWARF/shop"; done
      else
        sym "$SHOP"
      fi ;;
