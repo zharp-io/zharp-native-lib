@@ -147,8 +147,7 @@ int main(int argc, char **argv) {
         QNetworkReply *refused = get(manager, QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/down").arg(closed))));
         CHECK(refused->error() != QNetworkReply::NoError);
         if (refused->error() == QNetworkReply::NoError) {
-            fprintf(stderr, "  refused request: finished=%d error=%d
-", (int)refused->isFinished(), (int)refused->error());
+            fprintf(stderr, "  refused request: finished=%d error=%d\n", (int)refused->isFinished(), (int)refused->error());
         }
         delete refused;
     }
