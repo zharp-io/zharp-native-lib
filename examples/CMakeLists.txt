@@ -7,3 +7,7 @@ zharp_upload_debug_files(shop INCLUDE_SOURCES)
 
 add_executable(hello_c c/hello.c)
 target_link_libraries(hello_c PRIVATE zharp::zharp)
+
+if(ZHARP_QT)
+    add_subdirectory(qt)
+endif()

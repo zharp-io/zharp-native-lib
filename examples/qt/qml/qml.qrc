@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/">
+        <file>Main.qml</file>
+        <file>CartPage.qml</file>
+        <file>PaymentPage.qml</file>
+    </qresource>
+</RCC>
