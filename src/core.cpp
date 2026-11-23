@@ -462,7 +462,8 @@ void zharp_native_terminate_handler() {
     } else {
         message = "std::terminate called without an active exception";
     }
-    zharp::crash_set_exception(type, message.empty() ? "uncaught exception" : message);
+    zharp::Stack stack = zharp::capture_stack(ZHARP_RETURN_ADDRESS());
+    zharp::crash_set_exception(type, message.empty() ? "uncaught exception" : message, zharp::format_stack(stack), zharp::format_modules(stack));
     if (zharp::g_previous_terminate) zharp::g_previous_terminate();
     abort();
 }
@@ -554,10 +555,11 @@ ZHARP_NOINLINE void zharp_capture_message(zharp_level_t level, const char *messa
     capture(ZHARP_RETURN_ADDRESS(), severity, "Message", message);
 }
 
-int zharp_set_crash_reason(const char *type, const char *message) {
+ZHARP_NOINLINE int zharp_set_crash_reason(const char *type, const char *message) {
     // Crash reporting outlives zharp_shutdown, so this does too.
     if (!crash_enabled()) return 0;
-    crash_set_exception(type && *type ? type : "Error", message && *message ? message : "fatal error");
+    Stack stack = capture_stack(ZHARP_RETURN_ADDRESS());
+    crash_set_exception(type && *type ? type : "Error", message && *message ? message : "fatal error", format_stack(stack), format_modules(stack));
     return 1;
 }
 

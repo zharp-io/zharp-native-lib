@@ -139,7 +139,14 @@ bool crash_start(const Config &config, const std::map<std::string, std::string> 
 bool crash_enabled();
 void crash_set(const char *which, const std::string &value);  // "user.id", "session_id", "breadcrumbs"…
 void crash_set_tag(const std::string &key, const std::string &value);
-/** Called from the std::terminate handler: the uncaught exception's type and message. */
-void crash_set_exception(const std::string &type, const std::string &message);
+/**
+ * What the crash about to happen is (the std::terminate handler, zharp_set_crash_reason): its type
+ * and message, and the stack where it was named, recorded in-process (where every module's unwind
+ * tables are at hand) as format_stack and format_modules write it. Zharp names those frames from
+ * the .sym files, as for handled errors, when the walked dump can't get through the libraries
+ * an abort runs in.
+ */
+void crash_set_exception(const std::string &type, const std::string &message, const std::string &stack = std::string(),
+                         const std::string &modules = std::string());
 
 }  // namespace zharp

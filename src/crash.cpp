@@ -43,6 +43,8 @@ crashpad::StringAnnotation<256> g_user_name("zharp.user.name");
 crashpad::StringAnnotation<16000> g_breadcrumbs("zharp.breadcrumbs");
 crashpad::StringAnnotation<256> g_exception_type("zharp.exception.type");
 crashpad::StringAnnotation<4096> g_exception_message("zharp.exception.message");
+crashpad::StringAnnotation<8192> g_exception_stack("zharp.exception.stacktrace");
+crashpad::StringAnnotation<4096> g_exception_modules("zharp.exception.modules");
 
 crashpad::SimpleStringDictionary *g_tags = nullptr;
 crashpad::CrashpadClient *g_client = nullptr;
@@ -130,9 +132,17 @@ void crash_set_tag(const std::string &key, const std::string &value) {
     else g_tags->SetKeyValue(k.c_str(), fit(value, crashpad::SimpleStringDictionary::value_size - 1).c_str());
 }
 
-void crash_set_exception(const std::string &type, const std::string &message) {
+void crash_set_exception(const std::string &type, const std::string &message, const std::string &stack, const std::string &modules) {
     set(g_exception_type, type);
     set(g_exception_message, message);
+    // Whole lines only: a frame or module cut in half would be misread.
+    auto lines = [](const std::string &text, size_t max) {
+        if (text.size() < max) return text;
+        size_t end = text.rfind('\n', max - 1);
+        return end == std::string::npos ? std::string() : text.substr(0, end);
+    };
+    set(g_exception_stack, lines(stack, 8192));
+    set(g_exception_modules, lines(modules, 4096));
 }
 
 }  // namespace zharp
@@ -148,7 +158,7 @@ bool crash_start(const Config &, const std::map<std::string, std::string> &) {
 bool crash_enabled() { return false; }
 void crash_set(const char *, const std::string &) {}
 void crash_set_tag(const std::string &, const std::string &) {}
-void crash_set_exception(const std::string &, const std::string &) {}
+void crash_set_exception(const std::string &, const std::string &, const std::string &, const std::string &) {}
 
 }  // namespace zharp
 
