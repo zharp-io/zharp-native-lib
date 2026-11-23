@@ -25,6 +25,12 @@
 #endif
 
 #if defined(__linux__) || defined(__ANDROID__)
+#  include <signal.h>
+#  include <sys/mman.h>
+#  include <unistd.h>
+#endif
+
+#if defined(__linux__) || defined(__ANDROID__)
 // On Linux the handler finds this process's CrashpadInfo (and so every annotation set while it
 // runs) through the .note.crashpad.info ELF note. Crashpad links the note in through a reference
 // GCC optimises away at -O2; this keeps it, so the note is in every binary Zharp is linked into.
@@ -140,6 +146,39 @@ LONG WINAPI unhandled_cpp_exception(EXCEPTION_POINTERS *info) {
 }
 #endif
 
+#if defined(__linux__) || defined(__ANDROID__)
+/**
+ * Crashpad's in-process signal handler runs on the thread's alternate signal stack, which Crashpad
+ * sizes at SIGSTKSZ (8 KiB). On a CPU with AVX-512 the kernel's signal frame takes about 3.5 KiB
+ * of that, and the handler (as clang compiles it) runs past the rest into the guard page: the
+ * crash ends in a second SIGSEGV and no report is written. Crashpad keeps a larger stack it finds
+ * already set, so this sets one up first, for the thread that starts Zharp.
+ */
+void ensure_signal_stack() {
+    size_t size = 64 * 1024;
+#if defined(_SC_SIGSTKSZ)  // glibc 2.34+: what this CPU's signal frame needs
+    long minimum = sysconf(_SC_SIGSTKSZ);
+    if (minimum > 0 && (size_t)minimum * 4 > size) size = (size_t)minimum * 4;
+#endif
+    stack_t current;
+    if (sigaltstack(nullptr, &current) != 0) return;
+    if (current.ss_flags & SS_ONSTACK) return;
+    if (!(current.ss_flags & SS_DISABLE) && current.ss_size >= size) return;
+    const size_t page = (size_t)getpagesize();
+    size = (size + page - 1) & ~(page - 1);
+    // A guard page on each side, as Crashpad does. Kept for the thread's lifetime.
+    void *memory = mmap(nullptr, size + 2 * page, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (memory == MAP_FAILED) return;
+    char *base = static_cast<char *>(memory) + page;
+    stack_t stack = {};
+    stack.ss_sp = base;
+    stack.ss_size = size;
+    if (mprotect(base, size, PROT_READ | PROT_WRITE) != 0 || sigaltstack(&stack, nullptr) != 0) {
+        munmap(memory, size + 2 * page);
+    }
+}
+#endif
+
 }  // namespace
 
 bool crash_start(const Config &config, const std::map<std::string, std::string> &annotations) {
@@ -160,6 +199,9 @@ bool crash_start(const Config &config, const std::map<std::string, std::string> 
 
     // Without --no-rate-limit the handler sends one report an hour and drops the rest.
     std::vector<std::string> arguments = {"--no-rate-limit"};
+#if defined(__linux__) || defined(__ANDROID__)
+    ensure_signal_stack();
+#endif
     g_client = new crashpad::CrashpadClient();
     std::string url = minidump_url(config);
     bool ok = g_client->StartHandler(file_path(config.handler_path), file_path(database), file_path(database), url,
