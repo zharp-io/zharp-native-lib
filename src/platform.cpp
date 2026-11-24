@@ -1,4 +1,4 @@
-// Files, paths, the OS, time and randomness, for Windows, macOS and Linux.
+// Files, paths, the OS, time and randomness, for Windows, macOS, Linux and Android.
 #include "internal.h"
 
 #include <algorithm>
@@ -28,6 +28,9 @@
 #  include <sys/types.h>
 #  include <sys/utsname.h>
 #  include <unistd.h>
+#  if defined(__ANDROID__)
+#    include <android/log.h>
+#  endif
 #  if defined(__APPLE__)
 #    include <mach-o/dyld.h>
 #    include <sys/sysctl.h>

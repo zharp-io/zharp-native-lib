@@ -1,0 +1,110 @@
+name: Qt on Android end to end
+
+# Zharp for Qt in a Qt Widgets app built for Android (e2e/qt-android/app), on the emulator (API 31,
+# KVM), against a stand-in Zharp: a handled C++ error, then a null pointer write, an uncaught C++
+# exception and qFatal, each reported by the next launch from Android's exit record through Zharp
+# for Android (io.zharp:android, built here from zharp-android-lib's feat/native-errors). The
+# reported frames are looked up in the unstripped library, as the backend does with its .sym file.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/qt-android]
+
+env:
+  QT_VERSION: '6.8.3'
+  NDK_VERSION: '26.1.10909125'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: native
+
+      - uses: actions/checkout@v4
+        with:
+          repository: zharp-io/zharp-android-lib
+          ref: feat/native-errors
+          path: android-lib
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Zharp for Android into Maven Local
+        working-directory: android-lib
+        run: ./gradlew :zharp-android:publishToMavenLocal --console=plain -q && ls ~/.m2/repository/io/zharp/android
+
+      - name: Qt for Linux (the host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          dir: ${{ runner.temp }}/qt-host
+          cache: true
+      - run: echo "QT_HOST=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Qt for Android (x86_64)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: all_os   # Qt 6.7+ for Android is published once for every host
+          target: android
+          arch: android_x86_64
+          dir: ${{ runner.temp }}/qt-android
+          cache: true
+      - run: echo "QT_ANDROID=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Android NDK
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+          echo "NDK=$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "$ANDROID_SDK_ROOT/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: The app's Android package files (Qt's templates, plus Zharp for Android)
+        working-directory: native/e2e/qt-android
+        run: ./prepare-android.sh "$QT_ANDROID"
+
+      - name: Build the APK
+        run: |
+          "$QT_ANDROID/bin/qt-cmake" -S native/e2e/qt-android/app -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DQT_HOST_PATH="$QT_HOST" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$NDK"
+          cmake --build build --target apk
+          apk=$(find build -name '*.apk' | head -1)
+          # A release build is unsigned: sign it with a throwaway key, as a debug build would be.
+          keytool -genkeypair -keystore "$RUNNER_TEMP/e2e.keystore" -storepass android -keypass android -alias e2e             -dname "CN=Zharp e2e" -keyalg RSA -keysize 2048 -validity 30 > /dev/null 2>&1
+          apksigner=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" sign --ks "$RUNNER_TEMP/e2e.keystore" --ks-pass pass:android --key-pass pass:android "$apk"
+          lib=$(find build -maxdepth 1 -name 'libqt_shop_android_x86_64.so' | head -1)
+          echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
+          echo "LIB=$PWD/$lib" >> "$GITHUB_ENV"
+          ls -la "$apk" "$lib"
+          unzip -l "$apk" | grep -E "classes|libqt_shop" | head
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Report and crash on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash native/e2e/qt-android/run.sh "$APK" "$LIB"
+
+      - name: Keep what was sent
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt-android-sent
+          path: ${{ runner.temp }}/sent

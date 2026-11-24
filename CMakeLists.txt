@@ -13,6 +13,10 @@ else()
 endif()
 
 option(ZHARP_CRASHPAD "Report crashes with Crashpad (builds crashpad_handler)" ON)
+if(ANDROID)
+    # Android's own exit records, read by Zharp for Android, report crashes there.
+    set(ZHARP_CRASHPAD OFF CACHE BOOL "" FORCE)
+endif()
 option(ZHARP_BUILD_TESTS "Build the SDK's tests" ${ZHARP_TOP_LEVEL})
 option(ZHARP_BUILD_EXAMPLES "Build the examples" ${ZHARP_TOP_LEVEL})
 option(ZHARP_INSTALL "Install the SDK, Crashpad and the CMake package" ${ZHARP_TOP_LEVEL})
@@ -54,13 +58,19 @@ if(ZHARP_CRASHPAD)
 endif()
 
 # ── The SDK ───────────────────────────────────────────────────────────────────
-add_library(zharp
-    src/core.cpp
-    src/crash.cpp
-    src/platform.cpp
-    src/stack.cpp
-    src/transport.cpp
-    $<IF:$<BOOL:${WIN32}>,src/http_winhttp.cpp,src/http_curl.cpp>)
+if(ANDROID)
+    # On Android the C API forwards to Zharp for Android (io.zharp:android) over JNI: it reads
+    # crashes from Android's exit records and sends everything; no Crashpad, no libcurl here.
+    add_library(zharp src/android.cpp src/platform.cpp src/stack.cpp)
+else()
+    add_library(zharp
+        src/core.cpp
+        src/crash.cpp
+        src/platform.cpp
+        src/stack.cpp
+        src/transport.cpp
+        $<IF:$<BOOL:${WIN32}>,src/http_winhttp.cpp,src/http_curl.cpp>)
+endif()
 add_library(zharp::zharp ALIAS zharp)
 set_target_properties(zharp PROPERTIES
     VERSION ${PROJECT_VERSION}
@@ -76,7 +86,9 @@ if(BUILD_SHARED_LIBS)
     target_compile_definitions(zharp PUBLIC ZHARP_SHARED)
 endif()
 target_link_libraries(zharp PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
-if(WIN32)
+if(ANDROID)
+    target_link_libraries(zharp PRIVATE log)
+elseif(WIN32)
     # Crashpad's headers pull in windows.h; its min/max macros break mini_chromium's span.h.
     target_compile_definitions(zharp PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(zharp PRIVATE winhttp psapi)
