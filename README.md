@@ -137,6 +137,32 @@ then `include(<prefix>/share/zharp/zharp_qt.pri)` in your `.pro`: it links `zhar
 `zharp` and copies `crashpad_handler` (and on Windows the DLLs) next to your executable. vcpkg:
 the `qt` feature; Conan: `-o zharp/*:qt=True`.
 
+### Qt for Android
+
+On Android, Zharp's C and Qt API hands everything to **Zharp for Android** (`io.zharp:android`
+1.5.0+), which reads crashes from Android's own record of how the app ended (no Crashpad, no
+handler to ship) and sends everything with one session:
+
+```cmake
+FetchContent_MakeAvailable(zharp)          # as above; Crashpad and libcurl are left out on Android
+target_link_libraries(my_app PRIVATE zharp::qt)
+set_target_properties(my_app PROPERTIES QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
+```
+
+```groovy
+// android/build.gradle (Qt's template), in dependencies { … }
+implementation 'io.zharp:android:1.5.0'
+```
+
+`zharp_init` starts Zharp for Android (unless the app's Java side already did) and
+`ZharpQt::init(app)` works as on the desktop. Crashes (SIGSEGV, an uncaught C++ exception,
+`abort()`, `qFatal` — named through the abort message) arrive on the next launch: Android 12+
+with the crashed thread, Android 11 the signal only. `zharp_capture_error` and
+`zharp::capture_exception` send the stack with each library's build ID; the screen, user and tags
+go to Zharp for Android. Not on Android yet: spans (`ZharpQt::NetworkAccessManager` records
+nothing there), and `zharp_log` (Qt's messages reach Zharp through logcat). Upload the unstripped
+`.so` with `zharp_upload_debug_files(my_app …)` for readable frames. Qt for iOS isn't supported.
+
 ## How it works
 
 - **Crashes:** Crashpad's handler writes a minidump and POSTs it to
