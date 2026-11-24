@@ -149,7 +149,7 @@ static std::vector<Module> loaded_modules() {
 static int add_module(struct dl_phdr_info *info, size_t, void *data) {
     auto *modules = static_cast<std::vector<Module> *>(data);
     uint64_t lowest = UINT64_MAX, highest = 0;
-    std::string debug_id;
+    std::string debug_id, code_id;
     for (int i = 0; i < info->dlpi_phnum; i++) {
         const ElfW(Phdr) &phdr = info->dlpi_phdr[i];
         if (phdr.p_type == PT_LOAD) {
@@ -168,6 +168,11 @@ static int add_module(struct dl_phdr_info *info, size_t, void *data) {
                 if (desc + header->n_descsz > end) break;
                 if (header->n_type == NT_GNU_BUILD_ID && header->n_namesz == 4 && memcmp(name, "GNU", 4) == 0) {
                     debug_id = debug_id_from_bytes(desc, header->n_descsz, true);
+                    static const char hex[] = "0123456789abcdef";
+                    for (size_t b = 0; b < header->n_descsz; b++) {
+                        code_id += hex[desc[b] >> 4];
+                        code_id += hex[desc[b] & 15];
+                    }
                     break;
                 }
                 note = desc + desc_size;
@@ -181,6 +186,7 @@ static int add_module(struct dl_phdr_info *info, size_t, void *data) {
     module.name = basename_of(path.empty() ? executable_path() : path);
     module.debug_file = module.name;
     module.debug_id = debug_id;
+    module.code_id = code_id;
     module.base = info->dlpi_addr + lowest;
     module.size = highest - lowest;
     modules->push_back(module);

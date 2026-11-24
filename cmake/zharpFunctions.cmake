@@ -6,6 +6,9 @@
 #   target's executable after each build: zharp_init finds it there. Install it next to your
 #   executable too: install(PROGRAMS $<TARGET_FILE:zharp::crashpad_handler> DESTINATION bin).
 function(zharp_add_crash_handler target)
+    if(ANDROID)
+        return()  # Zharp for Android reads crashes from Android's exit records: no handler to ship.
+    endif()
     if(TARGET crashpad_handler)
         set(_handler crashpad_handler)
     elseif(TARGET crashpad::crashpad_handler)

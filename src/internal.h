@@ -84,6 +84,7 @@ struct Module {
     std::string name;        // "shop", "libfoo.so", "Shop.exe"
     std::string debug_id;    // Breakpad's: GUID + age, 33+ uppercase hex ('' when unknown)
     std::string debug_file;  // "Shop.pdb" on Windows, the module's own name elsewhere
+    std::string code_id;     // ELF: the GNU build ID as lowercase hex ('' elsewhere, or when it has none)
     uint64_t base = 0;       // where its addresses start (what .sym offsets are relative to)
     uint64_t size = 0;
 };
