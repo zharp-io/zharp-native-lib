@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(zharp_consumer LANGUAGES C CXX)
 
-find_package(zharp 0.1 CONFIG REQUIRED)
+find_package(zharp 0.2 CONFIG REQUIRED)
 
 add_executable(consumer main.cpp)
 target_compile_features(consumer PRIVATE cxx_std_17)
