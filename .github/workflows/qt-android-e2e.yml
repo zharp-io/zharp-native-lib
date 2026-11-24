@@ -53,7 +53,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          host: linux
+          host: all_os   # Qt 6.7+ for Android is published once for every host
           target: android
           arch: android_x86_64
           dir: ${{ runner.temp }}/qt-android
