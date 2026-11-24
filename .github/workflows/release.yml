@@ -1,6 +1,7 @@
 # Prebuilt binaries for a release tag (v*): the SDK as shared libraries, with the Qt layer built
-# against Qt 6.5 LTS (binary compatible with every later Qt 6; Linux arm64: Qt 6.8), installed into one folder per
-# platform and attached to the GitHub release. qmake users unpack one and
+# against Qt 6.8 LTS (the Qt CI tests; binary compatible with every later Qt 6), installed into one folder per
+# platform and attached to a draft GitHub release. Qt 6.5 no longer builds with the current MSVC
+# (its headers use stdext, gone from the STL), so 6.8 is the floor for the prebuilt Qt layer. qmake users unpack one and
 # include(<folder>/share/zharp/zharp_qt.pri); CMake users point CMAKE_PREFIX_PATH at it.
 # Qt 5.15 apps build the SDK from source (-DZHARP_QT_MAJOR=5).
 name: Release
@@ -21,11 +22,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-x64, os: ubuntu-22.04, qt: '6.5.3', qt_arch: linux_gcc_64 }
-          - { name: linux-arm64, os: ubuntu-22.04-arm, qt: '6.8.3', qt_arch: linux_gcc_arm64 }   # aqt has arm64 Linux Qt from 6.7
-          # macos-15: Qt 6.5's CMake files link the AGL framework, which the Xcode 26 SDK (macos-26) no longer has.
-          - { name: macos-universal, os: macos-15, qt: '6.5.3', qt_arch: clang_64, universal: true }
-          - { name: windows-x64, os: windows-latest, qt: '6.5.3', qt_arch: win64_msvc2019_64, msvc: true }
+          # Ubuntu 22.04 (glibc 2.35): the x64 binaries run on any distribution that new or newer.
+          - { name: linux-x64, os: ubuntu-22.04, qt: '6.8.3', qt_arch: linux_gcc_64 }
+          # Qt's arm64 Linux build links glibc 2.38 symbols, so arm64 builds on Ubuntu 24.04 (glibc 2.39).
+          - { name: linux-arm64, os: ubuntu-24.04-arm, qt: '6.8.3', qt_arch: linux_gcc_arm64 }
+          # macos-15: Qt 6.8's CMake files link the AGL framework, which the Xcode 26 SDK (macos-26) no longer has.
+          - { name: macos-universal, os: macos-15, qt: '6.8.3', qt_arch: clang_64, universal: true }
+          - { name: windows-x64, os: windows-latest, qt: '6.8.3', qt_arch: win64_msvc2022_64, msvc: true }
     steps:
       - uses: actions/checkout@v4
         with:

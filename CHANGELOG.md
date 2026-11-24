@@ -30,7 +30,8 @@ The first release: a C SDK with a C++ layer, for Windows, macOS and Linux.
   finishes later), `zharp_span_traceparent`, and `zharp_set_crash_reason` (names a crash that is
   about to happen, for frameworks that abort on purpose). Named crashes (that, and uncaught
   exceptions) carry the stack recorded where they were named. Prebuilt shared binaries with the Qt
-  layer from the release workflow.
+  layer (built against Qt 6.8, so for Qt 6.8 and later; Linux x64 needs glibc 2.35+, Linux arm64
+  glibc 2.39+) from the release workflow. Older Qt 6 and Qt 5.15 build the SDK from source.
 - Qt (`zharp::qt`, `zharp_qt.h`, Qt 6.5+ and 5.15, CMake and qmake): `ZharpQt::init(app)`
   chains a message handler (`qWarning` and `qCritical` as breadcrumbs or logs, `qFatal` naming
   the crash), sets `screen.name` from the focused window and QML `StackView` pages, and
