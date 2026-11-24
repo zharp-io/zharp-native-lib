@@ -78,6 +78,9 @@ check std::runtime_error "a.get('screen.name') == 'Checkout'"
 line_of std::runtime_error main main.cpp      # where it was caught and reported
 
 run segv 15           # time for Android to attach the tombstone to the exit record
+echo "  --- Android's exit records"
+adb shell dumpsys activity exit-info "$APP" | grep -E "reason=|status=|description=|trace" | head -12 | sed 's/^/    /'
+adb logcat -d -b crash | grep -E "signal|Abort|#0[0-3]" | head -12 | sed 's/^/    /'
 run "" 15
 logs
 [ "$(count SIGSEGV)" = 1 ] || fail "expected one SIGSEGV report, got $(count SIGSEGV)"
