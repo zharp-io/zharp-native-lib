@@ -10,12 +10,18 @@ mkdir -p android
 cp "$QT/src/android/templates/build.gradle" android/build.gradle
 cp "$QT/src/android/templates/AndroidManifest.xml" android/AndroidManifest.xml
 python3 - <<'PY'
-import re
 p = "android/build.gradle"
 s = open(p).read()
-s = s.replace("mavenCentral()", "mavenCentral()\n        mavenLocal()")
-s = re.sub(r"(\ndependencies \{\n)", r"\1    implementation 'io.zharp:android:1.5.0'\n", s, count=1)
-assert "io.zharp:android" in s, s
+# Another dependencies block, as a user adds to Qt's template; Maven Local holds the branch build.
+s += """
+repositories {
+    mavenLocal()
+}
+
+dependencies {
+    implementation 'io.zharp:android:1.5.0'
+}
+"""
 open(p, "w").write(s)
 p = "android/AndroidManifest.xml"
 s = open(p).read()
@@ -23,5 +29,5 @@ s = s.replace("<application ", '<application android:usesCleartextTraffic="true"
 assert "usesCleartextTraffic" in s
 open(p, "w").write(s)
 PY
-grep -n -A4 "^dependencies" android/build.gradle
+tail -8 android/build.gradle
 grep -n "usesCleartextTraffic\|<activity" android/AndroidManifest.xml | head -3
