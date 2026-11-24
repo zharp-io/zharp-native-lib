@@ -14,6 +14,12 @@ target_link_libraries(zharp_integration_tests PRIVATE zharp::zharp Threads::Thre
 if(WIN32)
     target_link_libraries(zharp_integration_tests PRIVATE ws2_32)
 endif()
+if(WIN32 AND BUILD_SHARED_LIBS)
+    # Windows finds a DLL next to the executable (there is no rpath): without it the test can't
+    # start, and the loader's error box waits out the timeout.
+    add_custom_command(TARGET zharp_integration_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:zharp> $<TARGET_FILE_DIR:zharp_integration_tests>)
+endif()
 add_test(NAME integration COMMAND zharp_integration_tests)
 set_tests_properties(integration PROPERTIES TIMEOUT 120)
 
