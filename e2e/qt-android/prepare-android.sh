@@ -25,7 +25,7 @@ dependencies {
 open(p, "w").write(s)
 p = "android/AndroidManifest.xml"
 s = open(p).read()
-s = s.replace("<application ", '<application android:usesCleartextTraffic="true" ', 1)
+s = s.replace("<application", '<application android:usesCleartextTraffic="true"', 1)
 assert "usesCleartextTraffic" in s
 open(p, "w").write(s)
 PY
