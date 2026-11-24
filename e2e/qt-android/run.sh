@@ -77,7 +77,7 @@ check std::runtime_error "a.get('session.id') and a.get('enduser.id') == 'qt-use
 check std::runtime_error "a.get('screen.name') == 'Checkout'"
 line_of std::runtime_error main main.cpp      # where it was caught and reported
 
-run segv 8
+run segv 15           # time for Android to attach the tombstone to the exit record
 run "" 15
 logs
 [ "$(count SIGSEGV)" = 1 ] || fail "expected one SIGSEGV report, got $(count SIGSEGV)"
@@ -85,13 +85,13 @@ check SIGSEGV "a['zharp.handled'] == 'false' and a['exception.message'].startswi
 check SIGSEGV "a.get('screen.name') == 'Checkout' and a.get('session.id')"
 line_of SIGSEGV apply_discount cart.cpp
 
-run cxx 8
+run cxx 15
 run "" 15
 logs
 check SIGABRT "'std::runtime_error' in a['exception.message'] and 'seven' in a['exception.message']"
 line_of SIGABRT shop::parse_price cart.cpp
 
-run fatal 8
+run fatal 15
 run "" 15
 logs
 check SIGABRT "a['exception.message'].startswith('qFatal: Payments database missing: /data/payments.db')"
