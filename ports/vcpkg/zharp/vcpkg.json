@@ -1,6 +1,6 @@
 {
   "name": "zharp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Zharp for C and C++: crash reports through Crashpad, handled errors, breadcrumbs, logs and traces.",
   "homepage": "https://zharp.io/docs/sdks/native",
   "license": "MIT AND Apache-2.0",

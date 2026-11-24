@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.2.0 — 2026-11-24
+
+- Qt for Android: the C and Qt API forward to Zharp for Android (`io.zharp:android` 1.5.0+) over
+  JNI. Crashes (SIGSEGV, an uncaught C++ exception, `abort()`, `qFatal`) come from Android's own
+  exit records on the next launch (Android 12+ with the crashed thread, Android 11 the signal
+  only); `zharp_capture_error` and `zharp::capture_exception` send the stack with each library's
+  build ID; screen, user and tags go to Zharp for Android. Crashpad and libcurl are left out on
+  Android. Not on Android yet: spans and `zharp_log`. Checked end to end on the emulator on CI.
+
+## 0.1.0 — 2026-11-24
 
 The first release: a C SDK with a C++ layer, for Windows, macOS and Linux.
 

@@ -1,6 +1,6 @@
 """Conan recipe for Zharp's native SDK (C and C++).
 
-    conan create . --version 0.1.0
+    conan create . --version 0.2.0
 
 The package carries zharp::zharp, Crashpad's client libraries and crashpad_handler (in bin/,
 shipped next to your executable).
@@ -15,7 +15,7 @@ from conan.tools.scm import Git
 
 class ZharpConan(ConanFile):
     name = "zharp"
-    version = "0.1.0"
+    version = "0.2.0"
     license = "MIT", "Apache-2.0"
     url = "https://github.com/zharp-io/zharp-native-lib"
     homepage = "https://zharp.io/docs/sdks/native"

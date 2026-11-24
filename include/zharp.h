@@ -22,7 +22,7 @@
 #include <stddef.h>
 
 #define ZHARP_SDK_NAME "zharp-native"
-#define ZHARP_SDK_VERSION "0.1.0"
+#define ZHARP_SDK_VERSION "0.2.0"
 
 #if defined(_WIN32) && defined(ZHARP_SHARED)
 #  if defined(ZHARP_BUILDING)
