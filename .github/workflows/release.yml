@@ -77,7 +77,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: zharp-${{ matrix.name }}
-          path: dist/zharp-*.*
+          # The archive only: with dots in the tag (v0.1.0) "zharp-*.*" matched the folder too.
+          path: |
+            dist/zharp-*.tar.gz
+            dist/zharp-*.zip
+          if-no-files-found: error
 
   release:
     needs: build
@@ -89,8 +93,11 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Checksums
-        run: cd dist && sha256sum zharp-* > SHA256SUMS && cat SHA256SUMS
+        run: cd dist && ls -la && sha256sum zharp-*.tar.gz zharp-*.zip > SHA256SUMS && cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: dist/*
+          files: |
+            dist/zharp-*.tar.gz
+            dist/zharp-*.zip
+            dist/SHA256SUMS
