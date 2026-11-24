@@ -76,6 +76,10 @@ jobs:
             -DQT_HOST_PATH="$QT_HOST" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$NDK"
           cmake --build build --target apk
           apk=$(find build -name '*.apk' | head -1)
+          # A release build is unsigned: sign it with a throwaway key, as a debug build would be.
+          keytool -genkeypair -keystore "$RUNNER_TEMP/e2e.keystore" -storepass android -keypass android -alias e2e             -dname "CN=Zharp e2e" -keyalg RSA -keysize 2048 -validity 30 > /dev/null 2>&1
+          apksigner=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" sign --ks "$RUNNER_TEMP/e2e.keystore" --ks-pass pass:android --key-pass pass:android "$apk"
           lib=$(find build -maxdepth 1 -name 'libqt_shop_android_x86_64.so' | head -1)
           echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
           echo "LIB=$PWD/$lib" >> "$GITHUB_ENV"
